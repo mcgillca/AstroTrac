@@ -1,0 +1,4 @@
+//See hardwarelist.txt for details on this file format.
+//Version|Manufacturer|Model|Comment|MapsTo|PlugInDllName|X2Developer|Windows|Mac|Linux|
+2|Rainbow Astro|RST mount Equatorial|X2 plugin for RST mount in equatorial mode| |libRST||1|1|1|
+2|Rainbow Astro|RST mount Alt-Az|X2 plugin for RST mount in Alt-Az mode| |libRST||1|1|1|
