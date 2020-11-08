@@ -34,7 +34,7 @@
 #define MAX_PORT_NAME_SIZE 120
 
 
-// #define AstroTrac_X2_DEBUG    // Define this to have log files
+#define AstroTrac_X2_DEBUG    // Define this to have log files
 
 #if defined(SB_WIN_BUILD)
 #define DEF_PORT_NAME					"COM1"

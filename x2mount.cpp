@@ -50,19 +50,24 @@ X2Mount::X2Mount(const char* pszDriverSelection,
 	if (m_pIniUtil)
 	{
 	}
-/*
+    
+    
     // set mount alignement type and meridian avoidance mode.
-    if(stAstroTracr(pszDriverSelection,"Fork")) {
+    if(strstr(pszDriverSelection,"Single Arm")) {
         mAstroTrac.setMountMode(MountTypeInterface::Symmetrical_Equatorial);
     }
-    else if(stAstroTracr(pszDriverSelection,"Equatorial")) {
+    else {
          mAstroTrac.setMountMode(MountTypeInterface::Asymmetrical_Equatorial);
-     }
-     else {
-         mAstroTrac.setMountMode(MountTypeInterface::AltAz);
-     }
- */
-    
+    }
+#ifdef AstroTrac_X2_DEBUG
+    if (LogFile) {
+        time_t ltime = time(NULL);
+        char *timestamp = asctime(localtime(&ltime));
+        timestamp[strlen(timestamp) - 1] = 0;
+        fprintf(LogFile, "[%s] X2Mount constructor called pszDriverSelection: %s %d\n", timestamp, pszDriverSelection, mAstroTrac.mountType());
+        fflush(LogFile);
+    }
+#endif
 }
 
 X2Mount::~X2Mount()
