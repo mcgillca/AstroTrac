@@ -1,4 +1,4 @@
 //See hardwarelist.txt for details on this file format.
 //Version|Manufacturer|Model|Comment|MapsTo|PlugInDllName|X2Developer|Windows|Mac|Linux|
-2|AstroTrac|AstroTrac Equatorial|X2 plugin for AstroTrac360 mount in equatorial mode| |libAstroTrac||1|1|1|
-
+2|AstroTrac|AstroTrac German Equatorial|X2 plugin for AstroTrac360 mount in German equatorial mode| |libAstroTrac||1|1|1|
+2|AstroTrac|AstroTrac Single Arm|X2 plugin for AstroTrac360 mount in single arm equatorial mode| |libAstroTrac||1|1|1|

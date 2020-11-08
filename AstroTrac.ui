@@ -29,7 +29,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>RST Setup</string>
+   <string>AstroTrac360 Setup</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_6">
    <item>
@@ -394,23 +394,26 @@
      <widget class="QLabel" name="label_logo_2">
       <property name="geometry">
        <rect>
-        <x>138</x>
-        <y>8</y>
-        <width>160</width>
-        <height>43</height>
+        <x>10</x>
+        <y>20</y>
+        <width>81</width>
+        <height>91</height>
        </rect>
       </property>
       <property name="text">
        <string/>
       </property>
       <property name="pixmap">
-       <pixmap>RainbowAstro.png</pixmap>
+       <pixmap>AstroTrac360.png</pixmap>
+      </property>
+      <property name="scaledContents">
+       <bool>true</bool>
       </property>
       <property name="alignment">
        <set>Qt::AlignCenter</set>
       </property>
       <property name="X2_PhotoFileName" stdset="0">
-       <string>RainbowAstro.png</string>
+       <string>AstroTrac360.png</string>
       </property>
      </widget>
     </widget>
