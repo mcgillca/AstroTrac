@@ -1,17 +1,17 @@
 #!/bin/bash
 
-PACKAGE_NAME="RST_X2.pkg"
-BUNDLE_NAME="org.rti-zone.RSTX2"
+PACKAGE_NAME="AstroTrac_X2.pkg"
+BUNDLE_NAME="org.rti-zone.AstroTracX2"
 
 if [ ! -z "$app_id_signature" ]; then
-    codesign -f -s "$app_id_signature" --verbose ../build/Release/libRST.dylib
+    codesign -f -s "$app_id_signature" --verbose ../build/Release/libAstroTrac.dylib
 fi
 
-mkdir -p ROOT/tmp/RST_X2/
-cp "../RST.ui" ROOT/tmp/RST_X2/
-cp "../mountlist RST.txt" ROOT/tmp/RST_X2/
-cp "../RainbowAstro.png" ROOT/tmp/RST_X2/
-cp "../build/Release/libRST.dylib" ROOT/tmp/RST_X2/
+mkdir -p ROOT/tmp/AstroTrac_X2/
+cp "../AstroTrac.ui" ROOT/tmp/AstroTrac_X2/
+cp "../AstroTrac360.png" ROOT/tmp/AstroTrac_X2/
+cp "../mountlist AstroTrac.txt" ROOT/tmp/AstroTrac_X2/
+cp "../build/Release/libAstroTrac.dylib" ROOT/tmp/AstroTrac_X2/
 
 if [ ! -z "$installer_signature" ]; then
 	# signed package using env variable installer_signature
