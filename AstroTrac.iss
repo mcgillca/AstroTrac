@@ -40,6 +40,10 @@ DirExistsWarning=no
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Dirs]
+Name: "{app}\Plugins\MountPlugIns";
+Name: "{app}\Plugins64\MountPlugIns";
+
 [Files]
 Source: "mountlist AstroTrac.txt";                      DestDir: "{app}\Miscellaneous Files"; Flags: ignoreversion
 Source: "mountlist AstroTrac.txt";                      DestDir: "{app}\Miscellaneous Files"; Flags: ignoreversion; DestName: "mountlist64 AstroTrac.txt"
