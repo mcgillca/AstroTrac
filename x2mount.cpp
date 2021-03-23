@@ -36,15 +36,13 @@ X2Mount::X2Mount(const char* pszDriverSelection,
 #endif
 	
 	
-	m_bSynced = false;
-	m_bParked = false;
     m_bLinked = false;
 
     mAstroTrac.setSerxPointer(m_pSerX);
     mAstroTrac.setTSX(m_pTheSkyXForMounts);
     mAstroTrac.setSleeper(m_pSleeper);
 
-    m_CurrentRateIndex = 0;
+    m_CurrentRateIndex = 1;
 
 	// Read the current stored values for the settings
 	if (m_pIniUtil)
@@ -59,6 +57,7 @@ X2Mount::X2Mount(const char* pszDriverSelection,
     else {
          mAstroTrac.setMountMode(MountTypeInterface::Asymmetrical_Equatorial);
     }
+    
 #ifdef AstroTrac_X2_DEBUG
     if (LogFile) {
         time_t ltime = time(NULL);
@@ -110,28 +109,28 @@ int X2Mount::queryAbstraction(const char* pszName, void** ppVal)
 	    *ppVal = dynamic_cast<SyncMountInterface*>(this);
 	if (!strcmp(pszName, SlewToInterface_Name))
 		*ppVal = dynamic_cast<SlewToInterface*>(this);
-	else if (!strcmp(pszName, AsymmetricalEquatorialInterface_Name))
+	if (!strcmp(pszName, AsymmetricalEquatorialInterface_Name))
 		*ppVal = dynamic_cast<AsymmetricalEquatorialInterface*>(this);
-	else if (!strcmp(pszName, OpenLoopMoveInterface_Name))
+	if (!strcmp(pszName, OpenLoopMoveInterface_Name))
 		*ppVal = dynamic_cast<OpenLoopMoveInterface*>(this);
-	else if (!strcmp(pszName, NeedsRefractionInterface_Name))
+	 if (!strcmp(pszName, NeedsRefractionInterface_Name))
 		*ppVal = dynamic_cast<NeedsRefractionInterface*>(this);
-	else if (!strcmp(pszName, ModalSettingsDialogInterface_Name))
-		*ppVal = dynamic_cast<ModalSettingsDialogInterface*>(this);
-	else if (!strcmp(pszName, X2GUIEventInterface_Name))
-		*ppVal = dynamic_cast<X2GUIEventInterface*>(this);
-	else if (!strcmp(pszName, TrackingRatesInterface_Name))
+	//if (!strcmp(pszName, ModalSettingsDialogInterface_Name))
+	//	*ppVal = dynamic_cast<ModalSettingsDialogInterface*>(this);
+    //if (!strcmp(pszName, X2GUIEventInterface_Name))
+	// 	*ppVal = dynamic_cast<X2GUIEventInterface*>(this);
+    if (!strcmp(pszName, TrackingRatesInterface_Name))
 		*ppVal = dynamic_cast<TrackingRatesInterface*>(this);
-	else if (!strcmp(pszName, ParkInterface_Name))
+	if (!strcmp(pszName, ParkInterface_Name))
 		*ppVal = dynamic_cast<ParkInterface*>(this);
-	else if (!strcmp(pszName, UnparkInterface_Name))
+	if (!strcmp(pszName, UnparkInterface_Name))
 		*ppVal = dynamic_cast<UnparkInterface*>(this);
-	else if (!strcmp(pszName, LoggerInterface_Name))
+    if (!strcmp(pszName, LoggerInterface_Name))
         *ppVal = GetLogger();
-    else if (!strcmp(pszName, SerialPortParams2Interface_Name))
+    if (!strcmp(pszName, SerialPortParams2Interface_Name))
         *ppVal = dynamic_cast<SerialPortParams2Interface*>(this);
-    else if (!strcmp(pszName, DriverSlewsToParkPositionInterface_Name))
-        *ppVal = dynamic_cast<DriverSlewsToParkPositionInterface*>(this);
+    if (!strcmp(pszName, DriverSlewsToParkPositionInterface_Name))
+       *ppVal = dynamic_cast<DriverSlewsToParkPositionInterface*>(this);
 
     return SB_OK;
 }
@@ -279,8 +278,6 @@ int X2Mount::execModalSettingsDialog(void)
         dx->setEnabled("alignmentType",true);
         dx->setEnabled("pushButton_4",true);
 
-        nErr = mAstroTrac.getStandardTime(sTime);
-        nErr |= mAstroTrac.getStandardDate(sDate);
         if(!nErr) {
             sTmp =sDate + " - " + sTime;
             dx->setText("time_date", sTmp.c_str());
@@ -311,7 +308,6 @@ int X2Mount::execModalSettingsDialog(void)
 
 void X2Mount::uiEvent(X2GUIExchangeInterface* uiex, const char* pszEvent)
 {
-    int nErr;
     std::string sTmpBuf;
     std::string sTime;
     std::string sDate;
@@ -335,10 +331,7 @@ void X2Mount::uiEvent(X2GUIExchangeInterface* uiex, const char* pszEvent)
 	}
 
     if (!strcmp(pszEvent, "on_pushButton_clicked")) {
-        // TSX longitude is + going west and - going east, so passing the opposite
-        mAstroTrac.setSiteData( - m_pTheSkyXForMounts->longitude(),
-                          m_pTheSkyXForMounts->latitude(),
-                          m_pTheSkyXForMounts->timeZone());
+
     }
     
 
@@ -362,12 +355,23 @@ int X2Mount::establishLink(void)
     portNameOnToCharPtr(szPort,DRIVER_MAX_STRING);
 
 	nErr =  mAstroTrac.Connect(szPort);
+    
+#ifdef AstroTrac_X2_DEBUG
+    if (LogFile) {
+        time_t ltime = time(NULL);
+        char *timestamp = asctime(localtime(&ltime));
+        timestamp[strlen(timestamp) - 1] = 0;
+        fprintf(LogFile, "[%s] establishLink Called. nErr %d\n", timestamp, nErr);
+        fflush(LogFile);
+    }
+#endif
     if(nErr) {
         m_bLinked = false;
     }
     else {
         m_bLinked = true;
     }
+    
     return nErr;
 }
 
@@ -448,28 +452,72 @@ void X2Mount::deviceInfoModel(BasicStringInterface& str)
 int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
 {
 	int nErr = 0;
-
+    double dAz, dAlt, Ha;
+    bool  bComplete;
+    
     if(!m_bLinked)
         return ERR_NOLINK;
 
     X2MutexLocker ml(GetMutex());
 
-	// Get the RA and DEC from the mount
-	nErr = mAstroTrac.getRaAndDec(ra, dec);
-    if(nErr)
-        nErr = ERR_CMDFAILED;
+	// Get the HA and DEC from the mount
+	nErr = mAstroTrac.getHaAndDec(Ha, dec);
+    if(nErr) nErr = ERR_CMDFAILED;
+    
+    // Subtract HA from lst to get ra;
+    ra = m_pTheSkyXForMounts->lst()-Ha;
+    
+    // Ensure in range 0 to 24
+    if (ra < 0) {
+        ra += 24.0;
+    }
+    else if (ra > 24.0) {
+        ra -= 24.0;
+    }
 
+
+    
 #ifdef AstroTrac_X2_DEBUG
     if (LogFile) {
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] raDec Called. Ra : %f , Dec : %f \n", timestamp, ra, dec);
+        fprintf(LogFile, "[%s] raDec Called. ha : %f , Ra : %f Dec : %f BTP %d\n", timestamp, Ha, ra, dec, mAstroTrac.GetIsBeyondThePole());
         fprintf(LogFile, "[%s] nErr = %d \n", timestamp, nErr);
         fflush(LogFile);
     }
 #endif
 
+
+
+    // Now check if have exceeded the tracking limits
+    // First check to see if currently slewing - if so, then can return since no limits imposed during slews
+    nErr = isCompleteSlewTo(bComplete); if (nErr || ! bComplete) return nErr;
+    
+    // Now see if tracking beyond the meridian. Must be beyond the pole (pointing east of meridian) for this to occur.
+    // Value of TRAC_PAST_MERIDIAN set in x2mount.h
+    if (mAstroTrac.GetIsBeyondThePole() && Ha > TRAC_PAST_MERIDIAN) {
+        nErr = setTrackingRates(false, true, 0.0, 0.0);    // Stop tracking since these have been exceeded
+        if (nErr) return ERR_CMDFAILED;
+    }
+
+    // Now check to see if below the horizon. Beyond the pole must be false (pointing west of meridian) for this to be true
+    nErr = m_pTheSkyXForMounts->EqToHz(ra, dec, dAz, dAlt); if (nErr) return nErr;
+    
+    if (!mAstroTrac.GetIsBeyondThePole() && dAlt < 0.0) {
+        nErr = setTrackingRates(false, true, 0.0, 0.0);    if (nErr) return ERR_CMDFAILED; // Stop tracking since now too low and setting
+    }
+
+#ifdef AstroTrac_X2_DEBUG
+    if (LogFile) {
+        ltime = time(NULL);
+        timestamp = asctime(localtime(&ltime));
+        timestamp[strlen(timestamp) - 1] = 0;
+        fprintf(LogFile, "[%s] raDec Called. dAz %f, dAlt %f\n", timestamp, dAz, dAlt);
+        fflush(LogFile);
+    }
+#endif
+    
 	return nErr;
 }
 
@@ -511,11 +559,14 @@ int X2Mount::abort()
 int X2Mount::startSlewTo(const double& dRa, const double& dDec)
 {
 	int nErr = SB_OK;
+    double dHA;
 
     if(!m_bLinked)
         return ERR_NOLINK;
 
     X2MutexLocker ml(GetMutex());
+    // Start tracking since mount remembers tracking state before slewing
+    siderealTrackingOn();
 
 #ifdef AstroTrac_X2_DEBUG
 	if (LogFile) {
@@ -526,7 +577,11 @@ int X2Mount::startSlewTo(const double& dRa, const double& dDec)
         fflush(LogFile);
 	}
 #endif
-    nErr = mAstroTrac.startSlewTo(dRa, dDec);
+    
+    // Calulate HA using the Sky interface:
+    dHA = m_pTheSkyXForMounts->hourAngle(dRa);
+    
+    nErr = mAstroTrac.startSlewTo(dHA, dDec, dRa);
     if(nErr) {
 #ifdef AstroTrac_X2_DEBUG
         if (LogFile) {
@@ -554,6 +609,7 @@ int X2Mount::isCompleteSlewTo(bool& bComplete) const
     X2MutexLocker ml(pMe->GetMutex());
 
     nErr = pMe->mAstroTrac.isSlewToComplete(bComplete);
+
     if(nErr)
         return ERR_CMDFAILED;
 
@@ -562,7 +618,7 @@ int X2Mount::isCompleteSlewTo(bool& bComplete) const
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] isCompleteSlewTo nErr = %d \n", timestamp, nErr);
+        fprintf(LogFile, "[%s] isCompleteSlewTo %d nErr = %d i\n", timestamp, bComplete, nErr);
         fflush(LogFile);
     }
 #endif
@@ -572,6 +628,8 @@ int X2Mount::isCompleteSlewTo(bool& bComplete) const
 
 int X2Mount::endSlewTo(void)
 {
+    int nErr;
+    
 #ifdef AstroTrac_X2_DEBUG
     if (LogFile) {
         time_t ltime = time(NULL);
@@ -581,18 +639,29 @@ int X2Mount::endSlewTo(void)
         fflush(LogFile);
     }
 #endif
-    return SB_OK;
+    
+    nErr = mAstroTrac.endSlewTo();
+    
+    if(nErr) {
+        return ERR_CMDFAILED;
+    } else {
+        return SB_OK;
+    }
 }
 
 
 int X2Mount::syncMount(const double& ra, const double& dec)
 {
 	int nErr = SB_OK;
+    double Ha;
 
     if(!m_bLinked)
         return ERR_NOLINK;
 
     X2MutexLocker ml(GetMutex());
+    
+    // Convert ra to Ha
+    Ha = m_pTheSkyXForMounts->hourAngle(ra);
 
 #ifdef AstroTrac_X2_DEBUG
     if (LogFile) {
@@ -603,8 +672,8 @@ int X2Mount::syncMount(const double& ra, const double& dec)
         fflush(LogFile);
     }
 #endif
-
-    nErr = mAstroTrac.syncTo(ra, dec);
+    
+    nErr = mAstroTrac.syncTo(Ha, dec);
     if(nErr)
         nErr = ERR_CMDFAILED;
 
@@ -622,104 +691,54 @@ int X2Mount::syncMount(const double& ra, const double& dec)
 }
 
 bool X2Mount::isSynced(void)
-{
-    int nErr;
-
-    if(!m_bLinked)
-        return false;
-
-    X2MutexLocker ml(GetMutex());
-
-   nErr = mAstroTrac.isAligned(m_bSynced);
-
-#ifdef AstroTrac_X2_DEBUG
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] isSynced Called : m_bSynced = %s\n", timestamp, m_bSynced?"true":"false");
-        fprintf(LogFile, "[%s] isSynced nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
-
-    return m_bSynced;
+{   // As per documentation, always returns true since the mount does not know if it has been synced
+    
+    return true;
 }
 
 #pragma mark - TrackingRatesInterface
 int X2Mount::setTrackingRates(const bool& bTrackingOn, const bool& bIgnoreRates, const double& dRaRateArcSecPerSec, const double& dDecRateArcSecPerSec)
 {
     int nErr = SB_OK;
-    double dTrackRaArcSecPerHr;
-    double dTrackDecArcSecPerHr;
     if(!m_bLinked)
         return ERR_NOLINK;
 
     X2MutexLocker ml(GetMutex());
 
-    dTrackRaArcSecPerHr = dRaRateArcSecPerSec * 3600;
-    dTrackDecArcSecPerHr = dDecRateArcSecPerSec * 3600;
-
-    nErr = mAstroTrac.setTrackingRates(bTrackingOn, bIgnoreRates, dTrackRaArcSecPerHr, dTrackDecArcSecPerHr);
+    nErr = mAstroTrac.setTrackingRates(bTrackingOn, bIgnoreRates, dRaRateArcSecPerSec, dDecRateArcSecPerSec);
 #ifdef AstroTrac_X2_DEBUG
     if (LogFile) {
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] setTrackingRates Called. Tracking On: %s , Ra rate : %f , Dec rate: %f\n", timestamp, bTrackingOn?"true":"false", dRaRateArcSecPerSec, dDecRateArcSecPerSec);
+        fprintf(LogFile, "[%s] setTrackingRates Called. Tracking On: %s , Ra rate : %f , Dec rate: %f nerr %d\n", timestamp, bTrackingOn?"true":"false", dRaRateArcSecPerSec, dDecRateArcSecPerSec, nErr);
         fflush(LogFile);
     }
 #endif
     if(nErr)
         return ERR_CMDFAILED;
-
-#ifdef AstroTrac_X2_DEBUG
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] setTrackingRates nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
-
+    
     return nErr;
 	
 }
 
 int X2Mount::trackingRates(bool& bTrackingOn, double& dRaRateArcSecPerSec, double& dDecRateArcSecPerSec)
 {
+    // This simply reads the previously stored rates
     int nErr = SB_OK;
-    double dTrackRaArcSecPerHr;
-    double dTrackDecArcSecPerHr;
-
+    
+    X2MutexLocker ml(GetMutex());
     if(!m_bLinked)
         return ERR_NOLINK;
 
-    X2MutexLocker ml(GetMutex());
-
-    nErr = mAstroTrac.getTrackRates(bTrackingOn, dTrackRaArcSecPerHr, dTrackDecArcSecPerHr);
-    if(nErr) {
-#ifdef AstroTrac_X2_DEBUG
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] trackingRates  mAstroTrac.getTrackRates nErr = %d \n", timestamp, nErr);
-            fflush(LogFile);
-        }
-#endif
-        return ERR_CMDFAILED;
-    }
-    dRaRateArcSecPerSec = dTrackRaArcSecPerHr / 3600;
-    dDecRateArcSecPerSec = dTrackDecArcSecPerHr / 3600;
-
+    nErr = mAstroTrac.getTrackRates(bTrackingOn, dRaRateArcSecPerSec, dDecRateArcSecPerSec); if (nErr) return ERR_CMDFAILED;
+    
 #ifdef AstroTrac_X2_DEBUG
     if (LogFile) {
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] trackingRates Called. Tracking On: %d , Ra rate : %f , Dec rate: %f\n", timestamp, bTrackingOn, dRaRateArcSecPerSec, dDecRateArcSecPerSec);
+        fprintf(LogFile, "[%s] trackingRates Called. Tracking On: %s , Ra rate : %f , Dec rate: %f nerr %d\n", timestamp, bTrackingOn?"true":"false", dRaRateArcSecPerSec, dDecRateArcSecPerSec, nErr);
         fflush(LogFile);
     }
 #endif
@@ -796,70 +815,22 @@ int X2Mount::trackingOff()
     return nErr;
 }
 
+
 #pragma mark - NeedsRefractionInterface
 bool X2Mount::needsRefactionAdjustments(void)
 {
-
-    if(!m_bLinked)
-        return false;
-
     return true;
 }
 
 #pragma mark - Parking Interface
 bool X2Mount::isParked(void)
 {
-    int nErr;
-    bool bTrackingOn;
-    bool bIsPArked;
-    double dTrackRaArcSecPerHr, dTrackDecArcSecPerHr;
-
-    if(!m_bLinked)
-        return false;
-
-    X2MutexLocker ml(GetMutex());
-
-    nErr = mAstroTrac.getAtPark(bIsPArked);
-    if(nErr) {
-#ifdef AstroTrac_X2_DEBUG
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] isParked mAstroTrac.getAtPark nErr = %d \n", timestamp, nErr);
-            fflush(LogFile);
-        }
-#endif
-        return false;
-    }
-    if(!bIsPArked) // not parked
-        return false;
-
-    // get tracking state.
-    nErr = mAstroTrac.getTrackRates(bTrackingOn, dTrackRaArcSecPerHr, dTrackDecArcSecPerHr);
-    if(nErr) {
-#ifdef AstroTrac_X2_DEBUG
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] isParked mAstroTrac.getTrackRates nErr = %d \n", timestamp, nErr);
-            fflush(LogFile);
-        }
-#endif
-        return false;
-    }
-    // if AtPark and tracking is off, then we're parked, if not then we're unparked.
-    if(bIsPArked && !bTrackingOn)
-        m_bParked = true;
-    else
-        m_bParked = false;
-    return m_bParked;
+    return mAstroTrac.GetIsParked();
+ 
 }
 
 int X2Mount::startPark(const double& dAz, const double& dAlt)
 {
-	double dRa, dDec;
 	int nErr = SB_OK;
 
     if(!m_bLinked)
@@ -867,31 +838,9 @@ int X2Mount::startPark(const double& dAz, const double& dAlt)
 	
 	X2MutexLocker ml(GetMutex());
 
-	nErr = m_pTheSkyXForMounts->HzToEq(dAz, dAlt, dRa, dDec);
-    if (nErr) {
-#ifdef AstroTrac_X2_DEBUG
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] startPark  m_pTheSkyXForMounts->HzToEq nErr = %d \n", timestamp, nErr);
-            fflush(LogFile);
-        }
-#endif
-        return nErr;
-    }
-
-#ifdef AstroTrac_X2_DEBUG
-	if (LogFile) {
-		time_t ltime = time(NULL);
-		char *timestamp = asctime(localtime(&ltime));
-		timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] startPark Called. Alt: %f , Az: %f [ Ra: %f , Dec: %f]\n", timestamp, dAz, dAlt, dRa, dDec);
-        fflush(LogFile);
-	}
-#endif
-    // goto park
-    nErr = mAstroTrac.gotoPark(dRa, dDec);
+    // No choice of park position so can ignore co-ordinates
+    // Will park towards north or south pole with weights down
+    nErr = mAstroTrac.gotoPark(0.0, 0.0);
     if(nErr)
         nErr = ERR_CMDFAILED;
 
@@ -912,38 +861,16 @@ int X2Mount::startPark(const double& dAz, const double& dAlt)
 int X2Mount::isCompletePark(bool& bComplete) const
 {
     int nErr = SB_OK;
-
+    X2Mount* pMe = (X2Mount*)this;
+    
+    X2MutexLocker ml(pMe->GetMutex());
+    
     if(!m_bLinked)
         return ERR_NOLINK;
-
-    X2Mount* pMe = (X2Mount*)this;
-
-    X2MutexLocker ml(pMe ->GetMutex());
-
-#ifdef AstroTrac_X2_DEBUG
-	if (LogFile) {
-		time_t ltime = time(NULL);
-		char *timestamp = asctime(localtime(&ltime));
-		timestamp[strlen(timestamp) - 1] = 0;
-		fprintf(LogFile, "[%s] isCompletePark Called\n", timestamp);
-        fflush(LogFile);
-	}
-#endif
-    nErr = pMe->mAstroTrac.getAtPark(bComplete);
-    if(nErr)
-        nErr = ERR_CMDFAILED;
-
-#ifdef AstroTrac_X2_DEBUG
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] isCompletePark  mAstroTrac.getAtPark nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
-
-	return nErr;
+    
+    nErr = pMe->mAstroTrac.GetIsParkingComplete(bComplete); if (nErr) return ERR_CMDFAILED;
+    
+    return SB_OK;
 }
 
 int X2Mount::endPark(void)
@@ -973,7 +900,7 @@ int X2Mount::startUnpark(void)
 #endif
         nErr = ERR_CMDFAILED;
     }
-    m_bParked = false;
+
     return nErr;
 }
 
@@ -982,63 +909,8 @@ int X2Mount::startUnpark(void)
 */
 int X2Mount::isCompleteUnpark(bool& bComplete) const
 {
-    int nErr;
-    bool bIsParked;
-    bool bTrackingOn;
-    double dTrackRaArcSecPerHr, dTrackDecArcSecPerHr;
-
-    if(!m_bLinked)
-        return ERR_NOLINK;
-
-    X2Mount* pMe = (X2Mount*)this;
-
-    X2MutexLocker ml(pMe ->GetMutex());
-
-    bComplete = false;
-
-    nErr = pMe->mAstroTrac.getAtPark(bIsParked);
-    if(nErr) {
-#ifdef AstroTrac_X2_DEBUG
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] isCompleteUnpark  mAstroTrac.getAtPark nErr = %d \n", timestamp, nErr);
-            fflush(LogFile);
-        }
-#endif
-        nErr = ERR_CMDFAILED;
-    }
-    if(!bIsParked) { // no longer parked.
-        bComplete = true;
-        pMe->m_bParked = false;
-        return nErr;
-    }
-
-    // if we're still at the park position
-    // get tracking state. If tracking is off, then we're parked, if not then we're unparked.
-    nErr = pMe->mAstroTrac.getTrackRates(bTrackingOn, dTrackRaArcSecPerHr, dTrackDecArcSecPerHr);
-    if(nErr)
-        nErr = ERR_CMDFAILED;
-#ifdef AstroTrac_X2_DEBUG
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] isCompleteUnpark  mAstroTrac.getTrackRates nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
-
-    if(bTrackingOn) {
-        bComplete = true;
-        pMe->m_bParked = false;
-    }
-    else {
-        bComplete = false;
-        pMe->m_bParked = true;
-    }
-	return SB_OK;
+    bComplete = true;
+    return SB_OK;
 }
 
 /*!Called once the unpark is complete.
@@ -1057,7 +929,10 @@ bool X2Mount::knowsBeyondThePole()
 }
 
 int X2Mount::beyondThePole(bool& bYes) {
-	// bYes = mAstroTrac.GetIsBeyondThePole();
+    if(!m_bLinked)
+        return ERR_NOLINK;
+
+    bYes = mAstroTrac.GetIsBeyondThePole();
 	return SB_OK;
 }
 
@@ -1079,26 +954,6 @@ double X2Mount::flipHourAngle() {
 
 int X2Mount::gemLimits(double& dHoursEast, double& dHoursWest)
 {
-    int nErr = SB_OK;
-    if(!m_bLinked)
-        return ERR_NOLINK;
-
-    X2MutexLocker ml(GetMutex());
-
-    nErr = mAstroTrac.getLimits(dHoursEast, dHoursWest);
-
-#ifdef AstroTrac_X2_DEBUG
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] gemLimits mAstroTrac.getLimits nErr = %d\n", timestamp, nErr);
-        fprintf(LogFile, "[%s] gemLimits dHoursEast = %f\n", timestamp, dHoursEast);
-        fprintf(LogFile, "[%s] gemLimits dHoursWest = %f\n", timestamp, dHoursWest);
-        fflush(LogFile);
-    }
-#endif
-    // temp debugging.
 	dHoursEast = 0.0;
 	dHoursWest = 0.0;
 	return SB_OK;
