@@ -83,6 +83,8 @@ int AstroTrac::Connect(char *pszPort)
     
     // Set flat to indicate whether north or south latitude
     m_bNorthernHemisphere = (m_pTsx->latitude() > 0);
+    // Set axis direction to AstroTrac
+    nErr = AstroTracSendCommand(m_bNorthernHemisphere? "<1d1>" : "<1d-1>", szResp, SERIAL_BUFFER_SIZE); if (nErr) return ERR_CMDFAILED;
     
     // Set approximate slew offset - either plus or minus 25 arcsecs depending on the hempisphere
     m_dSlewOffset = 25.0/3600.0 * (m_bNorthernHemisphere ? 1.0: -1.0);
@@ -397,8 +399,13 @@ int AstroTrac::getHaAndDec(double &dHa, double &dDec)
     HAandDECfromEncoderValues(m_dHAEncoder, m_dDecEncoder, dHa, dDec);
     
     //Set flag to indicate if beyond the pole
-    m_bIsBTP = m_bNorthernHemisphere ? (m_dDecEncoder  < 0): (m_dDecEncoder > 0);
-        
+    // If this is an asymettrical mount, set flag to indicate if beyond the pole:
+    if (m_mountType == MountTypeInterface::Asymmetrical_Equatorial) {
+        m_bIsBTP = m_bNorthernHemisphere ? (m_dDecEncoder  > 0): (m_dDecEncoder < 0);
+    } else {
+        m_bIsBTP = false;
+    }
+
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
@@ -408,67 +415,71 @@ int AstroTrac::getHaAndDec(double &dHa, double &dDec)
 #endif
     return nErr;
 }
-void AstroTrac::EncoderValuesfromHAanDEC(double dHa, double dDec, double &RAEncoder, double &DEEncoder, bool bUseBTP)
+void AstroTrac::EncoderValuesfromHAanDEC(double dHa, double dDec, double &HAEncoder, double &DEEncoder, bool bUseBTP)
 {
+    // For symmetrical mount, use pre-merdian positioning.
     // If bUseBTP is true, take value from current state of BTP to determine which side of the merdian we are on - only used to sync the mount
     if (m_bNorthernHemisphere) {
-        if ((bUseBTP && m_bIsBTP) || (!bUseBTP && dHa < 0.0)) {
-            DEEncoder = + (dDec - 90.0);
-            RAEncoder = + (dHa + 6.0) * 360.0 / 24.0;
+        if (m_mountType == MountTypeInterface::Symmetrical_Equatorial || (bUseBTP && m_bIsBTP) || (!bUseBTP && dHa < 0.0)) {
+            DEEncoder = - (dDec - 90.0);
+            HAEncoder = + (dHa + 6.0) * 360.0 / 24.0;
         }
         else {    // Post-Meridian
-            DEEncoder = - (dDec - 90.0);
-            RAEncoder = + (dHa - 6.0) * 360.0 / 24.0;
+            DEEncoder = + (dDec - 90.0);
+            HAEncoder = + (dHa - 6.0) * 360.0 / 24.0;
         }
     }
     else {
-        if ((bUseBTP && m_bIsBTP) || (!bUseBTP && dHa < 0.0)) {
-            DEEncoder = + (dDec + 90.0);
-            RAEncoder = - (dHa + 6.0) * 360.0 / 24.0;
+        if (m_mountType == MountTypeInterface::Symmetrical_Equatorial || (bUseBTP && m_bIsBTP) || (!bUseBTP && dHa < 0.0)) {
+            DEEncoder = - (dDec + 90.0);
+            HAEncoder = - (dHa + 6.0) * 360.0 / 24.0;
         }
         else {    // Post-Meridian
-            DEEncoder = - (dDec + 90.0);
-            RAEncoder = - (dHa - 6.0) * 360 / 24.0;
+            DEEncoder = + (dDec + 90.0);
+            HAEncoder = - (dHa - 6.0) * 360 / 24.0;
         }
     }
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 5
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
     timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] AstroTrac::EncodervaluefromHAandDec called %f %f %f %f bUseBTP %d IsBeyondThePole %d\n", timestamp, RAEncoder, DEEncoder,  dHa, dDec, bUseBTP, m_bIsBTP);
-    
+    fprintf(Logfile, "[%s] AstroTrac::EncodervaluefromHAandDec (asymetrical) called %f %f %f %f bUseBTP %d IsBeyondThePole %d\n", timestamp, RAEncoder, DEEncoder,  dHa, dDec, bUseBTP, m_bIsBTP);
     fflush(Logfile);
 #endif
+        
 
 }
 
 void AstroTrac::HAandDECfromEncoderValues(double RAEncoder, double DEEncoder, double &dHa, double &dDec)
 {
     // Convert from encoder values
+    // For symmetrical mount, use pre-merdian positioning.
     if (m_bNorthernHemisphere) {
-        if (DEEncoder < 0.0) {      //  Pre-meridian
-            dDec = 90.0 + DEEncoder;
+        if (m_mountType == MountTypeInterface::Symmetrical_Equatorial || DEEncoder > 0.0) {      //  Pre-meridian
+            // Constrain to maximum of 90 for cases where DEEncoder is slightly positive in Symmetrical case
+            dDec = std::min(90.0 - DEEncoder, 90.0);
             dHa = -6.0 + RAEncoder / 360.0 * 24.0;
         }
         else {
-            dDec = 90.0 - DEEncoder;
+            dDec = 90.0 + DEEncoder;
             dHa = 6.0 + RAEncoder /360.0 * 24.0;
         }
     }
     else {
-        if (DEEncoder > 0.0) {      //  Pre-meridian
-            dDec = -90.0 + DEEncoder;
+        if (m_mountType == MountTypeInterface::Symmetrical_Equatorial || DEEncoder < 0.0) {      //  Pre-meridian
+            // Constrain to minimum of -90 for cases where DEEncoder is slightly positive in Symmetrical case
+            dDec = std::max(-90.0 - DEEncoder, -90.0);
             dHa = -6.0 - RAEncoder / 360.0 * 24.0;
         }
         else {
-            dDec = -90.0 - DEEncoder;
+            dDec = -90.0 + DEEncoder;
             dHa = 6.0 - RAEncoder / 360.0 * 24.0;
         }
         
     }
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
     timestamp[strlen(timestamp) - 1] = 0;
@@ -548,11 +559,11 @@ int AstroTrac::setTrackingRates(const bool bTrackingOn, const bool bIgnoreRates,
         else {
             if (m_bNorthernHemisphere) {
                 RARate = AT_SIDEREAL_SPEED - dRaRateArcSecPerSec;
-                DECRate = m_bIsBTP ? dDecRateArcSecPerSec : -dDecRateArcSecPerSec;
+                DECRate = (m_mountType == MountTypeInterface::Symmetrical_Equatorial || m_bIsBTP) ? -dDecRateArcSecPerSec : dDecRateArcSecPerSec;
             }
             else {
                 RARate = -(AT_SIDEREAL_SPEED - dRaRateArcSecPerSec);
-                DECRate = m_bIsBTP ? dDecRateArcSecPerSec : -dDecRateArcSecPerSec;
+                DECRate = (m_mountType == MountTypeInterface::Symmetrical_Equatorial ||m_bIsBTP) ? -dDecRateArcSecPerSec : dDecRateArcSecPerSec;
             }
             // Now save tracking rates for TSX interface - must capture rates
             m_bTracking = true;
