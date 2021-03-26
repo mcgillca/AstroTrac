@@ -25,11 +25,14 @@
 #include "../../licensedinterfaces/mountdriverinterface.h"
 #include "../../licensedinterfaces/mount/asymmetricalequatorialinterface.h"
 
-#include "StopWatch.h"
+// #include "StopWatch.h"
 
 
-#define PLUGIN_DEBUG 2   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
-#define DRIVER_VERSION 1.00
+// #define PLUGIN_DEBUG 1   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
+#define DRIVER_VERSION 0.80
+
+#define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
+
 
 enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BAD_CMD_RESPONSE, COMMAND_FAILED, PLUGIN_ERROR};
 
@@ -38,7 +41,9 @@ enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BA
 #define PLUGIN_LOG_BUFFER_SIZE 256
 #define ERR_PARSE   1
 
-#define PLUGIN_NB_SLEW_SPEEDS 4
+#define PLUGIN_NB_SLEW_SPEEDS 11
+
+#define MAXSENDTRIES 3  // Maximum number of attempts to send a mesage to the mount
 
 
 // Define Class for Astrometric Instruments AstroTrac controller.
@@ -56,57 +61,36 @@ public:
     void setTSX(TheSkyXFacadeForDriversInterface *pTSX) { m_pTsx = pTSX;};
     void setSleeper(SleeperInterface *pSleeper) { m_pSleeper = pSleeper;};
 
-    int setSiteData(double dLongitude, double dLatitute, double dTimeZone);
-    int getSiteData(std::string &sLongitude, std::string &sLatitude, std::string &sTimeZone);
-
     int getFirmwareVersion(std::string &sFirmware);
 
     void    setMountMode(MountTypeInterface::Type mountType);
     MountTypeInterface::Type mountType();
 
-    int getRaAndDec(double &dRa, double &dDec);
-    int syncTo(double dRa, double dDec);
+    int getHaAndDec(double &dHa, double &dDec);
+    int syncTo(double dHa, double dDec);
     int isAligned(bool &bAligned);
     
-    int setTrackingRates(bool bTrackingOn, bool bIgnoreRates, double dTrackRaArcSecPerHr, double dTrackDecArcSecPerHr);
-    int getTrackRates(bool &bTrackingOn, double &dTrackRaArcSecPerHr, double &dTrackDecArcSecPerHr);
+    int setTrackingRates(bool bTrackingOn, bool bIgnoreRates, double dTrackRaArcSecPerSec, double dTrackDecArcSecPerSec);
+    int getTrackRates(bool &bTrackingOn, double &dTrackRaArcSecPerSec, double &dTrackDecArcSecPerSec);
 
-    int startSlewTo(double dRa, double dDec);
+    int startSlewTo(double dHa, double dDec, double dRa);
     int isSlewToComplete(bool &bComplete);
+    int endSlewTo();
 
     int startOpenLoopMove(const MountDriverInterface::MoveDir Dir, unsigned int nRate);
     int stopOpenLoopMove();
     int getNbSlewRates();
     int getRateName(int nZeroBasedIndex, std::string &sOut);
-    
-    int setMaxSpeed(const int nSpeed);
-    int getMaxSpeed(int &nSpeed);
 
-    int setFindSpeed(const int nSpeed);
-    int getFindSpeed(int &nSpeed);
-
-    int setCenteringSpeed(const int nSpeed);
-    int getCenteringSpeed(int &nSpeed);
-
-    int setGuideSpeed(const int nSpeed);
-    int getGuideSpeed(int &nSpeed);
-
-    int gotoPark(double dRa, double dDEc);
-    int markParkPosition();
-    int getAtPark(bool &bParked);
-    int unPark();
+    int gotoPark(double dHa, double dDEc);
+    int GetIsParkingComplete(bool &bComplete);
+    bool GetIsParked() const { return m_bisParked; }
+    int unPark() {m_bisParked = false; return PLUGIN_OK; };
 
 
-    int getLimits(double &dHoursEast, double &dHoursWest);
+    bool GetIsBeyondThePole() const { return m_bIsBTP; }
 
     int Abort();
-
-    int getLocalTimeFormat(bool &b24h);
-    int getDateFormat(bool &bDdMmYy);
-    int getStandardTime(std::string &sTime);
-    int getStandardDate(std::string &sDate);
-    int syncTime();
-    int syncDate();
 
 private:
 
@@ -120,49 +104,58 @@ private:
 
 	bool    m_bIsConnected;                               // Connected to the mount?
     std::string m_sFirmwareVersion;
+    
+    bool    m_bNorthernHemisphere;
 
     MountTypeInterface::Type    m_mountType;
-    
-    std::string     m_sTime;
-    std::string     m_sDate;
 
-	double  m_dGotoRATarget;						  // Current Target RA;
-	double  m_dGotoDECTarget;                      // Current Goto Target Dec;
+    
+    // Latest RA and DEC encoder positions
+    double m_dHAEncoder = 0.0;
+    double m_dDecEncoder = 0.0;
 	
+    // Save the state of last tracking request
+    bool m_bTracking = true;
+    double m_dRATrackingRate = 0.0;
+    double m_dDETrackingRate = 0.0;
+    
+    // Parking variables
+    bool m_bisParked = false;
+    bool m_bParkingInProgress = false;
+
+    // Flag to tell slewing that aborted
+    bool m_bSlewingAborted = false;
+    
+    // Variables to calculate slew time and improve Slew
+    double m_dVSlewMax = 3 * 3600.0; // Maximum slew velocity - 3 deg/sec in arcsec/sec
+    double m_dAslew = 3600.0;    // Slew Acceleration - arcsec/sec
+    double m_dSlewOffset = 0.0;  // How wrong was last slew? Store and attempt to correct in next slew
+    double  m_dGotoRATarget;     // Current Target RA - to allow slew offset to be calculated
+    
     MountDriverInterface::MoveDir      m_nOpenLoopDir;
 
     // limits don't change mid-course so we cache them
+    bool    m_bIsBTP = false;
     bool    m_bLimitCached;
     double  m_dHoursEast;
     double  m_dHoursWest;
     
     int     AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen);
+    int     AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen);
     int     AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int bufferLen);
 
-    int     setSiteLongitude(const char *szLongitude);
-    int     setSiteLatitude(const char *szLatitude);
-    int     setSiteTimezone(const char *szTimezone);
-
-    int     getSiteLongitude(std::string &sLongitude);
-    int     getSiteLatitude(std::string &sLatitude);
-    int     getSiteTZ(std::string &sTimeZone);
-
-    int     setTarget(double dRa, double dDec);
-    int     slewTargetRA_DecEpochNow();
-
-    int     getSoftLimitEastAngle(double &dAngle);
-    int     getSoftLimitWestAngle(double &dAngle);
-
-    void    convertDecDegToDDMMSS(double dDeg, char *szResult, char &cSign, unsigned int size);
-    int     convertDDMMSSToDecDeg(const char *szStrDeg, double &dDecDeg);
     
-    void    convertRaToHHMMSSt(double dRa, char *szResult, unsigned int size);
-    int     convertHHMMSStToRa(const char *szStrRa, double &dRa);
-
-    int     parseFields(const char *pszIn, std::vector<std::string> &svFields, char cSeparator);
-
-    std::vector<std::string>    m_svSlewRateNames = {"Guide", "Centering", "Find", "Max"};
-    CStopWatch      timer;
+    // Functions to encapsulate transform from drive 1 and drive 2 position angles to positions on the sky
+    void EncoderValuesfromHAanDEC(double dHa, double dDec, double &RAEncoder, double &DEEncoder, bool bUseBTP);
+    void HAandDECfromEncoderValues(double RAEncoder, double DEEncoder, double &dHa, double &dDec);
+    
+    // Function to calculate slew time
+    double slewTime(double dDist);
+    
+    std::vector<std::string>    m_svSlewRateNames = {"0.5x", "1x (siderial)", "2x", "4x", "8x", "16x", "32x", "64x", "128x", "256x", "512x"};
+    std::vector<double>    m_dvSlewRates = {0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0};
+    
+    // CStopWatch      timer;
 
     
 #ifdef PLUGIN_DEBUG

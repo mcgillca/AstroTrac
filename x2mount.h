@@ -32,9 +32,10 @@
 #define PARENT_KEY			"AstroTracMount"
 #define CHILD_KEY_PORT_NAME "PortName"
 #define MAX_PORT_NAME_SIZE 120
+#define TRAC_PAST_MERIDIAN 1.0   // Allow mount to track this much beyond the Meridian - set to 1 hour for now
 
 
-#define AstroTrac_X2_DEBUG    // Define this to have log files
+// #define AstroTrac_X2_DEBUG  1  // Define this to have log files. 1 for just bad things, 2 for general stuff.
 
 #if defined(SB_WIN_BUILD)
 #define DEF_PORT_NAME					"COM1"
@@ -207,9 +208,6 @@ private:
 	AstroTrac mAstroTrac;
 
     bool m_bLinked;
-
-	bool m_bSynced;
-	bool m_bParked;
 
 	char m_PortName[MAX_PORT_NAME_SIZE];
 	
