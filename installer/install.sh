@@ -32,17 +32,18 @@ else
 	PLUGINS_DIR="PlugIns"
 fi
 
-cp "./mountlist RST.txt" "$TheSkyX_Path/Resources/Common/Miscellaneous Files/"
-cp "./RST.ui" "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/"
-cp "./RainbowAstro.png" "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/"
-cp "./libRST.so" "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/"
+
+cp "./mountlist AstroTrac.txt" "$TheSkyX_Path/Resources/Common/Miscellaneous Files/"
+cp "./AstroTrac.ui" "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/"
+cp "./AstroTrac360.png" "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/"
+cp "./libAstroTrac.so" "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/"
 
 app_owner=`/usr/bin/stat -c "%u" "$TheSkyX_Path" | xargs id -n -u`
 if [ ! -z "$app_owner" ]; then
-	chown $app_owner "$TheSkyX_Path/Resources/Common/Miscellaneous Files/mountlist RST.txt"
-	chown $app_owner "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/RST.ui"
-	chown $app_owner "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/RainbowAstro.png"
-	chown $app_owner "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/libRST.so"
+	chown $app_owner "$TheSkyX_Path/Resources/Common/Miscellaneous Files/mountlist AstroTrac.txt"
+	chown $app_owner "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/AstroTrac.ui"
+	chown $app_owner "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/AstroTrac360.png"
+	chown $app_owner "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/libAstroTrac.so"
 fi
-chmod  755 "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/libRST.so"
+chmod  755 "$TheSkyX_Path/Resources/Common/$PLUGINS_DIR/MountPlugIns/libAstroTrac.so"
 
