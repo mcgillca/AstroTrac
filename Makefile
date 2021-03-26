@@ -1,6 +1,6 @@
-# Makefile for libNexDome
+# Makefile for libAstroTrac
 
-CC = gccr
+CC = gcc
 CFLAGS = -fPIC -Wall -Wextra -O2 -g -DSB_LINUX_BUILD -I. -I./../../
 CPPFLAGS = -fPIC -Wall -Wextra -O2 -g -DSB_LINUX_BUILD -std=gnu++11 -I. -I./../../
 LDFLAGS = -shared -lstdc++

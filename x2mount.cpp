@@ -283,29 +283,9 @@ int X2Mount::execModalSettingsDialog(void)
 
 	// Set values in the userinterface
     if(m_bLinked) {
-        dx->setEnabled("pushButton",true);
-        dx->setEnabled("pushButton_2",true);
-        dx->setEnabled("pushButton_3",true);
-        dx->setEnabled("alignmentType",true);
-        dx->setEnabled("pushButton_4",true);
-
-        if(!nErr) {
-            sTmp =sDate + " - " + sTime;
-            dx->setText("time_date", sTmp.c_str());
-        }
 
     }
     else {
-        dx->setText("time_date", "");
-        dx->setText("siteName", "");
-        dx->setText("longitude", "");
-        dx->setText("latitude", "");
-        dx->setText("timezone", "");
-        dx->setEnabled("pushButton",false);
-        dx->setEnabled("pushButton_2",false);
-        dx->setEnabled("pushButton_3",false);
-        dx->setEnabled("alignmentType",false);
-        dx->setEnabled("pushButton_4",false);
     }
 	//Display the user interface
 	if ((nErr = ui->exec(bPressedOK)))
@@ -319,38 +299,12 @@ int X2Mount::execModalSettingsDialog(void)
 
 void X2Mount::uiEvent(X2GUIExchangeInterface* uiex, const char* pszEvent)
 {
-    std::string sTmpBuf;
-    std::string sTime;
-    std::string sDate;
-
     if(!m_bLinked)
         return ;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-	time_t ltime;
-	char *timestamp;
-	if (LogFile) {
-		ltime = time(NULL);
-		timestamp = asctime(localtime(&ltime));
-		timestamp[strlen(timestamp) - 1] = 0;
-		fprintf(LogFile, "[%s] uievent %s\n", timestamp, pszEvent);
-        fflush(LogFile);
-	}
-#endif
 	if (!strcmp(pszEvent, "on_timer")) {
 
 	}
-
-    if (!strcmp(pszEvent, "on_pushButton_clicked")) {
-
-    }
-    
-
-    if (!strcmp(pszEvent, "on_pushButton_2_clicked")) {
-    }
-
-    if (!strcmp(pszEvent, "on_pushButton_3_clicked")) {
-    }
 
 	return;
 }
