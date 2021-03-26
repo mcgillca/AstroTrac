@@ -58,7 +58,7 @@ X2Mount::X2Mount(const char* pszDriverSelection,
          mAstroTrac.setMountMode(MountTypeInterface::Asymmetrical_Equatorial);
     }
     
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
     if (LogFile) {
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
@@ -105,7 +105,7 @@ int X2Mount::queryAbstraction(const char* pszName, void** ppVal)
 {
 	*ppVal = NULL;
     
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
     if (LogFile) {
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
@@ -539,7 +539,7 @@ int X2Mount::abort()
 
     X2MutexLocker ml(GetMutex());
 
-#ifdef AstroTrac_X2_DEBUG
+#if defined AstroTrac_X2_DEBUG & AstroTrac_X2_DEBUG >= 2
 	if (LogFile) {
 		time_t ltime = time(NULL);
 		char *timestamp = asctime(localtime(&ltime));
@@ -779,7 +779,7 @@ int X2Mount::siderealTrackingOn()
     if(nErr)
         return ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
     if (LogFile) {
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
@@ -939,7 +939,7 @@ int		X2Mount::endUnpark(void)
 
 bool X2Mount::knowsBeyondThePole()
 {
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
         if (LogFile) {
             time_t ltime = time(NULL);
             char *timestamp = asctime(localtime(&ltime));

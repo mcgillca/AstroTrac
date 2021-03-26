@@ -35,7 +35,7 @@
 #define TRAC_PAST_MERIDIAN 1.0   // Allow mount to track this much beyond the Meridian - set to 1 hour for now
 
 
-#define AstroTrac_X2_DEBUG  1  // Define this to have log files. 1 for just bad things, 2 for general stuff.
+// #define AstroTrac_X2_DEBUG  1  // Define this to have log files. 1 for just bad things, 2 for general stuff.
 
 #if defined(SB_WIN_BUILD)
 #define DEF_PORT_NAME					"COM1"

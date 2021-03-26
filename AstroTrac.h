@@ -25,11 +25,11 @@
 #include "../../licensedinterfaces/mountdriverinterface.h"
 #include "../../licensedinterfaces/mount/asymmetricalequatorialinterface.h"
 
-#include "StopWatch.h"
+// #include "StopWatch.h"
 
 
-#define PLUGIN_DEBUG 1   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
-#define DRIVER_VERSION 1.00
+// #define PLUGIN_DEBUG 1   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
+#define DRIVER_VERSION 0.80
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
 
@@ -155,7 +155,7 @@ private:
     std::vector<std::string>    m_svSlewRateNames = {"0.5x", "1x (siderial)", "2x", "4x", "8x", "16x", "32x", "64x", "128x", "256x", "512x"};
     std::vector<double>    m_dvSlewRates = {0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0};
     
-    CStopWatch      timer;
+    // CStopWatch      timer;
 
     
 #ifdef PLUGIN_DEBUG

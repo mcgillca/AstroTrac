@@ -202,7 +202,7 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
         nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen);
         if (nErr == PLUGIN_OK) return nErr;
         
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
     timestamp[strlen(timestamp) - 1] = 0;
@@ -236,7 +236,7 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
     
     
     if(nErr) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
             ltime = time(NULL);
             timestamp = asctime(localtime(&ltime));
             timestamp[strlen(timestamp) - 1] = 0;
@@ -251,7 +251,7 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
     if(pszResult) {
         nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE);
         if(nErr) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
             ltime = time(NULL);
             timestamp = asctime(localtime(&ltime));
             timestamp[strlen(timestamp) - 1] = 0;
@@ -479,7 +479,7 @@ void AstroTrac::HAandDECfromEncoderValues(double RAEncoder, double DEEncoder, do
         
     }
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
     timestamp[strlen(timestamp) - 1] = 0;
@@ -539,7 +539,7 @@ int AstroTrac::setTrackingRates(const bool bTrackingOn, const bool bIgnoreRates,
     //Set flag to indicate if beyond the pole
 
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
@@ -587,7 +587,7 @@ int AstroTrac::setTrackingRates(const bool bTrackingOn, const bool bIgnoreRates,
     sprintf(szCmd, "<2ve%f>", DECRate);
     nErr = AstroTracSendCommand(szCmd, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
     timestamp[strlen(timestamp) - 1] = 0;
@@ -665,7 +665,7 @@ int AstroTrac::startSlewTo(double dHa, double dDec, double dRa)
     // Calculate time required to slew for each axis:
     tHa = slewTime(HAEncoder - m_dHAEncoder);
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
@@ -684,7 +684,7 @@ int AstroTrac::startSlewTo(double dHa, double dDec, double dRa)
     
     nErr = AstroTracSendCommand(out, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
  
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
@@ -700,7 +700,7 @@ int AstroTrac::startSlewTo(double dHa, double dDec, double dRa)
     sprintf(out, "<2p%f>", DEEncoder);
     nErr = AstroTracSendCommand(out, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
@@ -740,14 +740,15 @@ int AstroTrac::endSlewTo(){
     // Calculate Encoder Values
     EncoderValuesfromHAanDEC(dHa, dDec, dHAEncoder, dDecEncoder, false);
     
-    // Add differnce between the two as additional offset. THe offset has already been used to get this close
-    m_dSlewOffset += dHAEncoder - m_dHAEncoder;
+    // Add difference between the two as additional offset. The offset has already been used to get this close
+    // Only do this if the difference is less than 100" - otherwise likely to be some sort of error
+    if (fabs(dHAEncoder - m_dHAEncoder) * 3600.0 < 100) m_dSlewOffset += dHAEncoder - m_dHAEncoder;
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] endSlewTo: m_dHAEncoder %f Target Encoder %f Offset %f\n", timestamp, m_dHAEncoder, dHAEncoder, m_dSlewOffset*3600);
+        fprintf(Logfile, "[%s] endSlewTo: m_dHAEncoder %f Target Encoder %f Offset %f\"\n", timestamp, m_dHAEncoder, dHAEncoder, m_dSlewOffset*3600);
         fflush(Logfile);
 #endif
     
@@ -835,17 +836,20 @@ int AstroTrac::startOpenLoopMove(const MountDriverInterface::MoveDir Dir, unsign
     
     // figure out direction
     switch(Dir){
+            // Easy for DEC move - just positive or negative rate
         case MountDriverInterface::MD_NORTH:
-            sprintf(szCmd, "<2v%f>", rate);
+            sprintf(szCmd, "<2v%f>", -rate);
             break;
         case MountDriverInterface::MD_SOUTH:
-            sprintf(szCmd, "<2v-%f>", rate);
+            sprintf(szCmd, "<2v%f>", rate);
             break;
+            // Harder for RA move - must be with reference to the tracking speed. Sign of tracking speed depends on hemisphere
+            // Work out tracking speed, then add or subtract move rate to get resulting rate to move mount at.
         case MountDriverInterface::MD_EAST:
-            sprintf(szCmd, "<1v%f>", rate);
+            sprintf(szCmd, "<1v%f>", (m_bNorthernHemisphere ? + AT_SIDEREAL_SPEED : - AT_SIDEREAL_SPEED) + rate);
             break;
         case MountDriverInterface::MD_WEST:
-            sprintf(szCmd, "<1v-%f>", rate);
+            sprintf(szCmd, "<1v%f>", (m_bNorthernHemisphere ? + AT_SIDEREAL_SPEED : - AT_SIDEREAL_SPEED) - rate);
             break;
     }
     
