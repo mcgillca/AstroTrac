@@ -197,12 +197,14 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
 {
     int itries;
     int nErr = PLUGIN_OK;
+
+    *pszResult = 0; // Clear pszResult
     
     for (itries = 0; itries < MAXSENDTRIES; itries++) {
         nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen);
         if (nErr == PLUGIN_OK) return nErr;
         
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
     timestamp[strlen(timestamp) - 1] = 0;
@@ -260,7 +262,20 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
 #endif
             return nErr;
         }
+        
         strncpy(pszResult, (const char *)szResp, nResultMaxLen);
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+        // Check that the returned message is good
+        // If second letter is e, this indicates an error code
+        if (szResp[2] == 'e') {
+            ltime = time(NULL);
+            timestamp = asctime(localtime(&ltime));
+            timestamp[strlen(timestamp) - 1] = 0;
+            fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] Poorly formed reply: '%s'\n", timestamp, szResp);
+            fflush(Logfile);
+            return PLUGIN_BAD_CMD_RESPONSE;
+        }
+#endif
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
@@ -299,12 +314,29 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
 
         if (ulBytesRead !=1) {// timeout
             nErr = PLUGIN_BAD_CMD_RESPONSE;
-            break;
+	    return nErr;
         }
         ulTotalBytesRead += ulBytesRead;
 
     } while (*pszBufPtr++ != '>' && ulTotalBytesRead < nBufferLen );
 
+
+    // Last character should be a '>' - if not send error message
+    if (*(pszBufPtr -1) != '>') {
+    // Ensure string closed
+        if (ulTotalBytesRead < nBufferLen) *pszBufPtr = 0;
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+        ltime = time(NULL);
+        timestamp = asctime(localtime(&ltime));
+        timestamp[strlen(timestamp) - 1] = 0;
+        fprintf(Logfile, "[%s] [AstroTrac::readResponse] No closing bracket: *pszRespBuffer = %s bytes read %lu\n", timestamp, pszRespBuffer, ulTotalBytesRead);
+        fflush(Logfile);
+#endif
+        
+        return PLUGIN_BAD_CMD_RESPONSE;
+    }
+    
+    
     if(ulTotalBytesRead && *(pszBufPtr-1) == '>')
         *(pszBufPtr-1) = 0; //remove the # to zero terminate the string
 
@@ -744,7 +776,7 @@ int AstroTrac::endSlewTo(){
     // Only do this if the difference is less than 100" - otherwise likely to be some sort of error
     if (fabs(dHAEncoder - m_dHAEncoder) * 3600.0 < 100) m_dSlewOffset += dHAEncoder - m_dHAEncoder;
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
@@ -892,6 +924,14 @@ int AstroTrac::gotoPark(double dHa, double dDec)
     nErr = AstroTracSendCommand("<2p0.0>", szResp, SERIAL_BUFFER_SIZE); if (nErr) return COMMAND_FAILED;
     
     // Flag the parking is in progress
+    
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+    ltime = time(NULL);
+    timestamp = asctime(localtime(&ltime));
+    timestamp[strlen(timestamp) - 1] = 0;
+    fprintf(Logfile, "[%s] [AstroTrac::gotoPark] Called!\n", timestamp);
+    fflush(Logfile);
+#endif
     
     m_bParkingInProgress = true;
     return nErr;
