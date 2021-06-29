@@ -169,7 +169,7 @@ int X2Mount::startOpenLoopMove(const MountDriverInterface::MoveDir& Dir, const i
 
     nErr = mAstroTrac.startOpenLoopMove(Dir, nRateIndex);
     if(nErr) {
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
         if (LogFile) {
             time_t ltime = time(NULL);
             char *timestamp = asctime(localtime(&ltime));
@@ -204,7 +204,7 @@ int X2Mount::endOpenLoopMove(void)
 
     nErr = mAstroTrac.stopOpenLoopMove();
     if(nErr) {
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
         if (LogFile) {
             time_t ltime = time(NULL);
             char *timestamp = asctime(localtime(&ltime));
@@ -234,7 +234,7 @@ int X2Mount::rateNameFromIndexOpenLoopMove(const int& nZeroBasedIndex, char* psz
     
     nErr = mAstroTrac.getRateName(nZeroBasedIndex, sTmp);
     if(nErr) {
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
         if (LogFile) {
             time_t ltime = time(NULL);
             char *timestamp = asctime(localtime(&ltime));
@@ -416,7 +416,7 @@ void X2Mount::deviceInfoModel(BasicStringInterface& str)
 #pragma mark - Common Mount specifics
 int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
 {
-	int nErr = 0;
+  int nErr = 0;
     double dAz, dAlt, Ha;
     bool  bComplete;
     
@@ -425,8 +425,8 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
 
     X2MutexLocker ml(GetMutex());
 
-	// Get the HA and DEC from the mount
-	nErr = mAstroTrac.getHaAndDec(Ha, dec);
+    // Get the HA and DEC from the mount
+    nErr = mAstroTrac.getHaAndDec(Ha, dec);
     if(nErr) nErr = ERR_CMDFAILED;
     
     // Subtract HA from lst to get ra;
@@ -456,22 +456,59 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
 
     // Now check if have exceeded the tracking limits
     // First check to see if currently slewing - if so, then can return since no limits imposed during slews
-    nErr = isCompleteSlewTo(bComplete); if (nErr || ! bComplete) return nErr;
-    
-    // Now see if tracking beyond the meridian. Must be beyond the pole (pointing east of meridian) for this to occur.
-    // Value of TRAC_PAST_MERIDIAN set in x2mount.h
-    if (mAstroTrac.GetIsBeyondThePole() && Ha > TRAC_PAST_MERIDIAN) {
-        nErr = setTrackingRates(false, true, 0.0, 0.0);    // Stop tracking since these have been exceeded
-        if (nErr) return ERR_CMDFAILED;
-    }
+    nErr = isCompleteSlewTo(bComplete); if (nErr || !bComplete) return nErr;
 
-    // Now check to see if below the horizon. Beyond the pole must be false (pointing west of meridian) for this to be true
+    // Now check to see if below the horizon.
+    // Beyond the pole must be false (pointing west of meridian) for this to be true
+    
     nErr = m_pTheSkyXForMounts->EqToHz(ra, dec, dAz, dAlt); if (nErr) return nErr;
     
     if (!mAstroTrac.GetIsBeyondThePole() && dAlt < 0.0) {
-        nErr = setTrackingRates(false, true, 0.0, 0.0);    if (nErr) return ERR_CMDFAILED; // Stop tracking since now too low and setting
-    }
+      // Were getting random problems with positions, to ensure we have several measurements
+      m_iNTrackingOff++;
+      if (m_iNTrackingOff >= N_TRACK_STOP) {
 
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+	if (LogFile) {
+	  ltime = time(NULL);
+	  timestamp = asctime(localtime(&ltime));
+	  timestamp[strlen(timestamp) - 1] = 0;
+	  fprintf(LogFile, "[%s] raDec Called. Altitude < 0. dAlt %f, ha %f dec %f m_INTrackingOff %d\n", timestamp,
+		  dAlt,Ha, dec, m_iNTrackingOff);
+	  fflush(LogFile);
+	}
+#endif
+	nErr = setTrackingRates(false, true, 0.0, 0.0); if (nErr) return ERR_CMDFAILED; // Stop tracking since now too low and setting
+      }
+    }
+    // Now see if tracking beyond the meridian.
+    // Must be beyond the pole (pointing east of meridian) for this to occur
+    // or have pointing west of Merdidian and gone beyond Ha = 12.
+    // Value of TRAC_PAST_MERIDIAN set in x2mount.h
+    else if ((mAstroTrac.GetIsBeyondThePole() && Ha > TRAC_PAST_MERIDIAN) ||
+             (!mAstroTrac.GetIsBeyondThePole()  && Ha > 12 + TRAC_PAST_MERIDIAN)) {
+      // Were getting random problems with positions, to ensure we have several measurements
+      m_iNTrackingOff++;
+      if (m_iNTrackingOff >= N_TRACK_STOP) {
+        nErr = setTrackingRates(false, true, 0.0, 0.0);    // Stop tracking since these have been exceeded
+        
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+	if (LogFile) {
+	  ltime = time(NULL);
+	  timestamp = asctime(localtime(&ltime));
+	  timestamp[strlen(timestamp) - 1] = 0;
+	  fprintf(LogFile, "[%s] raDec Called. Too far past meridian. Ha %f m_iNTrackingOff %d\n", timestamp, Ha, m_iNTrackingOff);
+	  fflush(LogFile);
+	}
+#endif
+        if (nErr) return ERR_CMDFAILED;
+      }
+    }
+    // Else reset stop tracking counter
+    else {
+      m_iNTrackingOff = 0;
+    }
+    
 #if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
     if (LogFile) {
         ltime = time(NULL);
@@ -641,7 +678,7 @@ int X2Mount::syncMount(const double& ra, const double& dec)
     if(nErr)
         nErr = ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
     if (LogFile) {
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
@@ -768,7 +805,7 @@ int X2Mount::trackingOff()
     if(nErr)
         nErr = ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
     if (LogFile) {
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
@@ -802,7 +839,7 @@ int X2Mount::startPark(const double& dAz, const double& dAlt)
     if(!m_bLinked)
         return ERR_NOLINK;
 	
-	X2MutexLocker ml(GetMutex());
+    X2MutexLocker ml(GetMutex());
 
     // No choice of park position so can ignore co-ordinates
     // Will park towards north or south pole with weights down
@@ -810,7 +847,7 @@ int X2Mount::startPark(const double& dAz, const double& dAlt)
     if(nErr)
         nErr = ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
     if (LogFile) {
         time_t ltime = time(NULL);
         char *timestamp = asctime(localtime(&ltime));
@@ -861,7 +898,7 @@ int X2Mount::startUnpark(void)
             time_t ltime = time(NULL);
             char *timestamp = asctime(localtime(&ltime));
             timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] startUnpark : mAstroTrac.unPark() failled !\n", timestamp);
+            fprintf(LogFile, "[%s] startUnpark : mAstroTrac.unPark() failed !\n", timestamp);
             fflush(LogFile);
         }
 #endif

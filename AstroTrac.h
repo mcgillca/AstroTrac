@@ -29,7 +29,7 @@
 
 
 // #define PLUGIN_DEBUG 1   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
-#define DRIVER_VERSION 0.80
+#define DRIVER_VERSION 1.0
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
 
@@ -37,7 +37,7 @@
 enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BAD_CMD_RESPONSE, COMMAND_FAILED, PLUGIN_ERROR};
 
 #define SERIAL_BUFFER_SIZE 256
-#define MAX_TIMEOUT 1000
+#define MAX_TIMEOUT 100
 #define PLUGIN_LOG_BUFFER_SIZE 256
 #define ERR_PARSE   1
 

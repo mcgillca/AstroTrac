@@ -14,8 +14,8 @@
             filePath = "AstroTrac.cpp"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "685"
-            endingLineNumber = "685"
+            startingLineNumber = "715"
+            endingLineNumber = "715"
             landmarkName = "AstroTrac::startSlewTo(dHa, dDec, dRa)"
             landmarkType = "7">
          </BreakpointContent>

@@ -33,7 +33,7 @@
 #define CHILD_KEY_PORT_NAME "PortName"
 #define MAX_PORT_NAME_SIZE 120
 #define TRAC_PAST_MERIDIAN 1.0   // Allow mount to track this much beyond the Meridian - set to 1 hour for now
-
+#define N_TRACK_STOP       4     // Require 4 successive location co-ordinates beyond limits (meridian or horizon) to stop tracking
 
 // #define AstroTrac_X2_DEBUG  1  // Define this to have log files. 1 for just bad things, 2 for general stuff.
 
@@ -115,8 +115,8 @@ public:
 	virtual void deviceInfoModel(BasicStringInterface& str)						;
 	//@}
 	
-	virtual int									raDec(double& ra, double& dec, const bool& bCached = false)					;
-	virtual int									abort(void)																	;
+  virtual int raDec(double& ra, double& dec, const bool& bCached = false);
+  virtual int abort(void);
 	
 	//Optional interfaces, uncomment and implement as required.
 	
@@ -205,15 +205,17 @@ private:
 	TickCountInterface*						m_pTickCount;
 	
 	// Variables for AstroTrac
-	AstroTrac mAstroTrac;
+  AstroTrac mAstroTrac;
 
-    bool m_bLinked;
+  bool m_bLinked;
 
-	char m_PortName[MAX_PORT_NAME_SIZE];
+  char m_PortName[MAX_PORT_NAME_SIZE];
 	
-	int m_CurrentRateIndex;
+  int m_CurrentRateIndex;
 
-    void portNameOnToCharPtr(char* pszPort, const unsigned int& nMaxSize) const;
+  void portNameOnToCharPtr(char* pszPort, const unsigned int& nMaxSize) const;
+
+  int m_iNTrackingOff = 0;
 
 #ifdef AstroTrac_X2_DEBUG
     std::string m_sLogfilePath;
