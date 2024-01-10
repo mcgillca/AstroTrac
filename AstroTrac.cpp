@@ -197,11 +197,15 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
 {
     int itries;
     int nErr = PLUGIN_OK;
+    std::string sCmd;
+    std::string sResp;
 
     *pszResult = 0; // Clear pszResult
     
     for (itries = 0; itries < MAXSENDTRIES; itries++) {
-        nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen);
+        // nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen);
+        sCmd.assign(pszCmd);
+        nErr = deviceCommand(sCmd, sResp);
         if (nErr == PLUGIN_OK) return nErr;
         
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
@@ -353,6 +357,156 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
 }
 
 
+// Better way of sending commands and reading responses:
+
+int AstroTrac::deviceCommand(const std::string sCmd, std::string &sResp, int nTimeout, char cEndOfResponse)
+{
+    int nErr = PLUGIN_OK;
+    unsigned long  ulBytesWrite;
+    std::string localResp;
+
+    if(!m_bIsConnected)
+        return ERR_COMMNOLINK;
+
+    m_pSerx->purgeTxRx();
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+    ltime = time(NULL);
+    timestamp = asctime(localtime(&ltime));
+    timestamp[strlen(timestamp) - 1] = 0;
+    fprintf(Logfile, "[%s] [AstroTrac::domeCommand] Sending %s\n", timestamp, sCmd.c_str());
+    fflush(Logfile);
+#endif
+    nErr = m_pSerx->writeFile((void *)(sCmd.c_str()), sCmd.size(), ulBytesWrite);
+    m_pSerx->flushTx();
+
+    if(nErr){
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+        ltime = time(NULL);
+        timestamp = asctime(localtime(&ltime));
+        timestamp[strlen(timestamp) - 1] = 0;
+        fprintf(Logfile, "[%s] [AstroTrac::domeCommand] writeFile error %d\n", timestamp,nErr);
+        fflush(Logfile);
+#endif
+        return nErr;
+    }
+
+    // read response
+    nErr = readResponse(localResp, nTimeout, cEndOfResponse);
+    if(nErr)
+        return nErr;
+
+    if(!localResp.size())
+        sResp.assign(localResp);
+    else
+        sResp.clear();
+
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+    ltime = time(NULL);
+    timestamp = asctime(localtime(&ltime));
+    timestamp[strlen(timestamp) - 1] = 0;
+    fprintf(Logfile, "[%s] [AstroTrac::domeCommand] response %s\n", timestamp,sResp.c_str());
+    fflush(Logfile);
+#endif
+
+    return nErr;
+}
+
+int AstroTrac::readResponse(std::string &sResp, int nTimeout, char cEndOfResponse)
+{
+    int nErr = PLUGIN_OK;
+    unsigned char pszBuf[SERIAL_BUFFER_SIZE];
+    unsigned long ulBytesRead = 0;
+    unsigned long ulTotalBytesRead = 0;
+    unsigned char *pszBufPtr;
+    int nBytesWaiting = 0 ;
+    int nbTimeouts = 0;
+
+    sResp.clear();
+    memset(pszBuf, 0, SERIAL_BUFFER_SIZE);
+    pszBufPtr = pszBuf;
+
+    do {
+        nErr = m_pSerx->bytesWaitingRx(nBytesWaiting);
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 3
+        ltime = time(NULL);
+        timestamp = asctime(localtime(&ltime));
+        timestamp[strlen(timestamp) - 1] = 0;
+        fprintf(Logfile, "[%s] [AstroTrac::domeCommand] nBytesWaiting = %d\n", timestamp,nBytesWaiting);
+        fprintf(Logfile, "[%s] [AstroTrac::domeCommand] nBytesWaiting nErr =  %d\n", timestamp,nErr);
+        fflush(Logfile);
+#endif
+        if(!nBytesWaiting) {
+            nbTimeouts += MAX_READ_WAIT_TIMEOUT;
+            if(nbTimeouts >= nTimeout) {
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 3
+                ltime = time(NULL);
+                timestamp = asctime(localtime(&ltime));
+                timestamp[strlen(timestamp) - 1] = 0;
+                fprintf(Logfile, "[%s] [AstroTrac::domeCommand] bytesWaitingRx timeout, no data for %d ms\n", timestamp,nbTimeouts);
+                fprintf(Logfile, "[%s] [AstroTrac::domeCommand] nBytesWaiting nErr =  %d\n", timestamp,nErr);
+                fflush(Logfile);
+#endif
+                nErr = COMMAND_TIMEOUT;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(MAX_READ_WAIT_TIMEOUT));
+            continue;
+        }
+        nbTimeouts = 0;
+        if(ulTotalBytesRead + nBytesWaiting <= SERIAL_BUFFER_SIZE)
+            nErr = m_pSerx->readFile(pszBufPtr, nBytesWaiting, ulBytesRead, nTimeout);
+        else {
+            nErr = ERR_RXTIMEOUT;
+            break; // buffer is full.. there is a problem !!
+        }
+        if(nErr) {
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+            ltime = time(NULL);
+            timestamp = asctime(localtime(&ltime));
+            timestamp[strlen(timestamp) - 1] = 0;
+            fprintf(Logfile, "[%s] [AstroTrac::domeCommand] readFile error %d\n", timestamp, nErr);
+            fflush(Logfile);
+#endif
+            return nErr;
+        }
+
+        if (ulBytesRead != nBytesWaiting) { // timeout
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+            ltime = time(NULL);
+            timestamp = asctime(localtime(&ltime));
+            timestamp[strlen(timestamp) - 1] = 0;
+            fprintf(Logfile, "[%s] [AstroTrac::domeCommand] readFile Timeout Error\n", timestamp);
+            fprintf(Logfile, "[%s] [AstroTrac::domeCommand] readFile nBytesWaiting  =  %d\n", timestamp, nBytesWaiting);
+            fprintf(Logfile, "[%s] [AstroTrac::domeCommand] readFile ulBytesRead    = %lu\n", timestamp, ulBytesRead);
+            fflush(Logfile);
+#endif
+        }
+
+        ulTotalBytesRead += ulBytesRead;
+
+        pszBufPtr+=ulBytesRead;
+
+    } while (ulTotalBytesRead < SERIAL_BUFFER_SIZE  && *(pszBufPtr-1) != cEndOfResponse);
+
+
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
+    ltime = time(NULL);
+    timestamp = asctime(localtime(&ltime));
+    timestamp[strlen(timestamp) - 1] = 0;
+    fprintf(Logfile, "[%s] [AstroTrac::domeCommand] pszBuf = %s\n", timestamp, pszBuf);
+    fflush(Logfile);
+#endif
+
+
+    if(!ulTotalBytesRead)
+        nErr = COMMAND_TIMEOUT; // we didn't get an answer.. so timeout
+    else  if(*(pszBufPtr-1) == cEndOfResponse)
+        *(pszBufPtr-1) = 0; //remove the cEndOfResponse
+
+    sResp.assign((char *)pszBuf);
+    return nErr;
+}
+
 #pragma mark - dome controller informations
 
 int AstroTrac::getFirmwareVersion(std::string &sFirmware)
@@ -476,7 +630,7 @@ void AstroTrac::EncoderValuesfromHAanDEC(double dHa, double dDec, double &HAEnco
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
     timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] AstroTrac::EncodervaluefromHAandDec (asymetrical) called %f %f %f %f bUseBTP %d IsBeyondThePole %d\n", timestamp, RAEncoder, DEEncoder,  dHa, dDec, bUseBTP, m_bIsBTP);
+    fprintf(Logfile, "[%s] AstroTrac::EncodervaluefromHAandDec (asymetrical) called %f %f %f %f bUseBTP %d IsBeyondThePole %d\n", timestamp, HAEncoder, DEEncoder,  dHa, dDec, bUseBTP, m_bIsBTP);
     fflush(Logfile);
 #endif
         

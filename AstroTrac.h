@@ -16,6 +16,11 @@
 #include <vector>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
+#include <fstream>
+#include <chrono>
+#include <thread>
+#include <ctime>
 
 #include "../../licensedinterfaces/sberrorx.h"
 #include "../../licensedinterfaces/theskyxfacadefordriversinterface.h"
@@ -28,17 +33,22 @@
 // #include "StopWatch.h"
 
 
-// #define PLUGIN_DEBUG 1   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
+#define PLUGIN_DEBUG 2   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
 #define DRIVER_VERSION 1.0
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
 
 
-enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BAD_CMD_RESPONSE, COMMAND_FAILED, PLUGIN_ERROR};
+enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BAD_CMD_RESPONSE, COMMAND_FAILED, PLUGIN_ERROR, COMMAND_TIMEOUT};
 
-#define SERIAL_BUFFER_SIZE 256
-#define MAX_TIMEOUT 100
-#define PLUGIN_LOG_BUFFER_SIZE 256
+#define MAX_TIMEOUT 500
+#define MAX_READ_WAIT_TIMEOUT 25
+#define NB_RX_WAIT 10
+
+
+#define SERIAL_BUFFER_SIZE 4096
+// #define MAX_TIMEOUT 100
+#define PLUGIN_LOG_BUFFER_SIZE 4096
 #define ERR_PARSE   1
 
 #define PLUGIN_NB_SLEW_SPEEDS 11
@@ -144,7 +154,10 @@ private:
     int     AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen);
     int     AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int bufferLen);
 
-    
+    int     deviceCommand(const std::string sCmd, std::string &sResp, int nTimeout = MAX_TIMEOUT, char cEndOfResponse = '>');
+    int     readResponse(std::string &sResp, int nTimeout = MAX_TIMEOUT, char cEndOfResponse = '>');
+
+
     // Functions to encapsulate transform from drive 1 and drive 2 position angles to positions on the sky
     void EncoderValuesfromHAanDEC(double dHa, double dDec, double &RAEncoder, double &DEEncoder, bool bUseBTP);
     void HAandDECfromEncoderValues(double RAEncoder, double DEEncoder, double &dHa, double &dDec);
