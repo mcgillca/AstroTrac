@@ -200,14 +200,19 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
     std::string sCmd;
     std::string sResp;
 
-    *pszResult = 0; // Clear pszResult
-    
+    // *pszResult = 0; // Clear pszResult
+    memset(pszResult,0,nResultMaxLen);
+
     for (itries = 0; itries < MAXSENDTRIES; itries++) {
         // nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen);
         sCmd.assign(pszCmd);
         nErr = deviceCommand(sCmd, sResp);
-        if (nErr == PLUGIN_OK) return nErr;
-        
+        // copy result -> would be better to do it all with std::string -> future ToDo :)
+        memcpy(pszResult, sResp.c_str(), sResp.size());
+        if (nErr == PLUGIN_OK) {
+            return nErr;
+        }
+
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
@@ -216,7 +221,7 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
     fflush(Logfile);
 #endif
     }
-    
+
     return nErr;
     
 }
