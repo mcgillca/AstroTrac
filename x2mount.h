@@ -24,6 +24,7 @@
 #include "../../licensedinterfaces/parkinterface.h"
 #include "../../licensedinterfaces/unparkinterface.h"
 #include "../../licensedinterfaces/driverslewstoparkpositioninterface.h"
+#include "../../licensedinterfaces/mount/pulseguideinterface2.h"
 
 // Include files for AstroTrac mount
 #include "AstroTrac.h"
@@ -35,7 +36,7 @@
 #define TRAC_PAST_MERIDIAN 1.0   // Allow mount to track this much beyond the Meridian - set to 1 hour for now
 #define N_TRACK_STOP       4     // Require 4 successive location co-ordinates beyond limits (meridian or horizon) to stop tracking
 
-// #define AstroTrac_X2_DEBUG  1  // Define this to have log files. 1 for just bad things, 2 for general stuff.
+// #define AstroTrac_X2_DEBUG  2  // Define this to have log files. 1 for just bad things, 2 for general stuff.
 
 #if defined(SB_WIN_BUILD)
 #define DEF_PORT_NAME					"COM1"
@@ -65,6 +66,7 @@ class X2Mount : public MountDriverInterface
                         ,public X2GUIEventInterface
                         ,public SerialPortParams2Interface
                         ,public DriverSlewsToParkPositionInterface
+                        ,public PulseGuideInterface2
 {
 public:
 	/*!Standard X2 constructor*/
@@ -145,6 +147,13 @@ public:
 	virtual int								rateCountOpenLoopMove(void) const;
 	virtual int								rateNameFromIndexOpenLoopMove(const int& nZeroBasedIndex, char* pszOut, const int& nOutMaxSize);
 	virtual int								rateIndexOpenLoopMove(void);
+    
+    //PulseGuideInterface
+    virtual int useOpenLoopMoveInterface(int& nGuideRateIndex, OpenLoopMoveInterface** pOLSI)
+    {
+        nGuideRateIndex = 1; // 1 is rate "0.1x"
+        return queryAbstraction(OpenLoopMoveInterface_Name, (void**)pOLSI);
+    }
 	
 	//NeedsRefractionInterface
 	virtual bool							needsRefactionAdjustments(void);

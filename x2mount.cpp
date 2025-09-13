@@ -124,6 +124,18 @@ int X2Mount::queryAbstraction(const char* pszName, void** ppVal)
 		*ppVal = dynamic_cast<AsymmetricalEquatorialInterface*>(this);
 	if (!strcmp(pszName, OpenLoopMoveInterface_Name))
 		*ppVal = dynamic_cast<OpenLoopMoveInterface*>(this);
+    if (!strcmp(pszName, PulseGuideInterface2_Name)) {
+        *ppVal = dynamic_cast<PulseGuideInterface2*>(this);
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
+        if (LogFile) {
+            time_t ltime = time(NULL);
+            char *timestamp = asctime(localtime(&ltime));
+            timestamp[strlen(timestamp) - 1] = 0;
+            fprintf(LogFile, "[%s] queryAbstrcttion Called: PulseGuideInterface2 Set\n", timestamp);
+            fflush(LogFile);
+        }
+#endif
+    }
     // if (!strcmp(pszName, NeedsRefractionInterface_Name))
 	// 	*ppVal = dynamic_cast<NeedsRefractionInterface*>(this);
 	//if (!strcmp(pszName, ModalSettingsDialogInterface_Name))
