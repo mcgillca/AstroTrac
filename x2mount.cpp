@@ -47,6 +47,8 @@ X2Mount::X2Mount(const char* pszDriverSelection,
 	// Read the current stored values for the settings
 	if (m_pIniUtil)
 	{
+        m_iGuideRateIndex = m_pIniUtil->readInt(PARENT_KEY, CHILD_KEY_GUIDERATE, 0);
+        m_dHoursPastMeridian = m_pIniUtil->readDouble(PARENT_KEY, CHILD_KEY_HOURS_PAST_MERIDIAN, 1.0);
 	}
     
     
@@ -124,24 +126,14 @@ int X2Mount::queryAbstraction(const char* pszName, void** ppVal)
 		*ppVal = dynamic_cast<AsymmetricalEquatorialInterface*>(this);
 	if (!strcmp(pszName, OpenLoopMoveInterface_Name))
 		*ppVal = dynamic_cast<OpenLoopMoveInterface*>(this);
-    if (!strcmp(pszName, PulseGuideInterface2_Name)) {
+    if (!strcmp(pszName, PulseGuideInterface2_Name))
         *ppVal = dynamic_cast<PulseGuideInterface2*>(this);
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] queryAbstrcttion Called: PulseGuideInterface2 Set\n", timestamp);
-            fflush(LogFile);
-        }
-#endif
-    }
-    // if (!strcmp(pszName, NeedsRefractionInterface_Name))
-	// 	*ppVal = dynamic_cast<NeedsRefractionInterface*>(this);
-	//if (!strcmp(pszName, ModalSettingsDialogInterface_Name))
-	//	*ppVal = dynamic_cast<ModalSettingsDialogInterface*>(this);
-    //if (!strcmp(pszName, X2GUIEventInterface_Name))
-	// 	*ppVal = dynamic_cast<X2GUIEventInterface*>(this);
+    if (!strcmp(pszName, NeedsRefractionInterface_Name))
+	 	*ppVal = dynamic_cast<NeedsRefractionInterface*>(this);
+	if (!strcmp(pszName, ModalSettingsDialogInterface_Name))
+		*ppVal = dynamic_cast<ModalSettingsDialogInterface*>(this);
+    if (!strcmp(pszName, X2GUIEventInterface_Name))
+	 	*ppVal = dynamic_cast<X2GUIEventInterface*>(this);
     if (!strcmp(pszName, TrackingRatesInterface_Name))
 		*ppVal = dynamic_cast<TrackingRatesInterface*>(this);
 	if (!strcmp(pszName, ParkInterface_Name))
@@ -275,13 +267,10 @@ int X2Mount::execModalSettingsDialog(void)
 	X2ModalUIUtil uiutil(this, m_pTheSkyXForMounts);
 	X2GUIInterface*					ui = uiutil.X2UI();
 	X2GUIExchangeInterface*			dx = NULL;//Comes after ui is loaded
+    int i; // Counter
 	bool bPressedOK = false;
     std::string sTmp;
-    std::string sTime;
-    std::string sDate;
-    std::string sLongitude;
-    std::string sLatitude;
-    std::string sTimeZone;
+
 	if (NULL == ui) return ERR_POINTER;
 	
 	if ((nErr = ui->loadUserInterface("AstroTrac.ui", deviceType(), m_nPrivateMulitInstanceIndex)))
@@ -294,30 +283,32 @@ int X2Mount::execModalSettingsDialog(void)
     X2MutexLocker ml(GetMutex());
 
 	// Set values in the userinterface
-    if(m_bLinked) {
+    // First add the possible slew rates as guide rates (most will be way too big, but...)
+    for (i = 0; i < mAstroTrac.getNumberGuideRates(); i++) {
+        mAstroTrac.getRateName(i, sTmp);
+        dx->comboBoxAppendString("comboBox", sTmp.c_str());
+    }
+    dx->setCurrentIndex("comboBox", m_iGuideRateIndex);
+    
+    // Now display the hours past the meridian.
+    dx->setPropertyDouble("doubleSpinBox", "value", m_dHoursPastMeridian);
 
-    }
-    else {
-    }
 	//Display the user interface
 	if ((nErr = ui->exec(bPressedOK)))
 		return nErr;
 	
 	//Retreive values from the user interface
 	if (bPressedOK) {
+        m_iGuideRateIndex = dx->currentIndex("comboBox");
+        dx->propertyDouble("doubleSpinBox", "value", m_dHoursPastMeridian);
+        m_pIniUtil->writeInt(PARENT_KEY, CHILD_KEY_GUIDERATE, m_iGuideRateIndex);
+        m_pIniUtil->writeDouble(PARENT_KEY, CHILD_KEY_HOURS_PAST_MERIDIAN, m_dHoursPastMeridian);
 	}
 	return nErr;
 }
 
 void X2Mount::uiEvent(X2GUIExchangeInterface* uiex, const char* pszEvent)
 {
-    if(!m_bLinked)
-        return ;
-
-	if (!strcmp(pszEvent, "on_timer")) {
-
-	}
-
 	return;
 }
 
@@ -497,8 +488,8 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
     // Must be beyond the pole (pointing east of meridian) for this to occur
     // or have pointing west of Merdidian and gone beyond Ha = 12.
     // Value of TRAC_PAST_MERIDIAN set in x2mount.h
-    else if ((mAstroTrac.GetIsBeyondThePole() && Ha > TRAC_PAST_MERIDIAN) ||
-             (!mAstroTrac.GetIsBeyondThePole()  && Ha > 12 + TRAC_PAST_MERIDIAN)) {
+    else if ((mAstroTrac.GetIsBeyondThePole() && Ha > m_dHoursPastMeridian) ||
+             (!mAstroTrac.GetIsBeyondThePole()  && Ha > 12 + m_dHoursPastMeridian)) {
       // Were getting random problems with positions, to ensure we have several measurements
       m_iNTrackingOff++;
       if (m_iNTrackingOff >= N_TRACK_STOP) {
@@ -982,7 +973,7 @@ double X2Mount::flipHourAngle() {
 int X2Mount::gemLimits(double& dHoursEast, double& dHoursWest)
 {
 	dHoursEast = 0.0;
-	dHoursWest = TRAC_PAST_MERIDIAN; // Defined in x2mount.h
+	dHoursWest = m_dHoursPastMeridian;
 	return SB_OK;
 }
 
@@ -1023,7 +1014,6 @@ void X2Mount::portNameOnToCharPtr(char* pszPort, const unsigned int& nMaxSize) c
         m_pIniUtil->readString(PARENT_KEY, CHILD_KEY_PORT_NAME, pszPort, pszPort, nMaxSize);
 
 }
-
 
 
 
