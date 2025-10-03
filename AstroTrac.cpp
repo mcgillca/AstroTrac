@@ -831,7 +831,7 @@ int AstroTrac::isSlewToComplete(bool &bComplete)
 
 int AstroTrac::getNbSlewRates()
 {
-    return PLUGIN_NB_SLEW_SPEEDS;
+    return m_dvSlewRates.size();
 }
 
 // returns rate name from lit in Astrotrac.h

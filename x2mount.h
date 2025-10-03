@@ -32,8 +32,11 @@
 
 #define PARENT_KEY			"AstroTracMount"
 #define CHILD_KEY_PORT_NAME "PortName"
+#define CHILD_KEY_GUIDERATE "GuideRate"
+#define CHILD_KEY_HOURS_PAST_MERIDIAN "HPMeridian"
+
 #define MAX_PORT_NAME_SIZE 120
-#define TRAC_PAST_MERIDIAN 1.0   // Allow mount to track this much beyond the Meridian - set to 1 hour for now
+//#define TRAC_PAST_MERIDIAN 1.0   // Allow mount to track this much beyond the Meridian - set to 1 hour for now
 #define N_TRACK_STOP       4     // Require 4 successive location co-ordinates beyond limits (meridian or horizon) to stop tracking
 
 // #define AstroTrac_X2_DEBUG  2  // Define this to have log files. 1 for just bad things, 2 for general stuff.
@@ -148,10 +151,11 @@ public:
 	virtual int								rateNameFromIndexOpenLoopMove(const int& nZeroBasedIndex, char* pszOut, const int& nOutMaxSize);
 	virtual int								rateIndexOpenLoopMove(void);
     
+       
     //PulseGuideInterface
     virtual int useOpenLoopMoveInterface(int& nGuideRateIndex, OpenLoopMoveInterface** pOLSI)
     {
-        nGuideRateIndex = 1; // 1 is rate "0.1x"
+        nGuideRateIndex = m_iGuideRateIndex+1; // nGuideRateIndex seems to be based to start at 1.
         return queryAbstraction(OpenLoopMoveInterface_Name, (void**)pOLSI);
     }
 	
@@ -187,9 +191,9 @@ public:
     virtual bool                    isParityFixed() const        {return true;}
 
 	// GUI Interface
-	virtual int initModalSettingsDialog(void) { return 0; }
-	virtual int execModalSettingsDialog(void);
-	void uiEvent(X2GUIExchangeInterface* uiex, const char* pszEvent); // Process a UI event
+    virtual int             initModalSettingsDialog(void) {return SB_OK;};
+    virtual int             execModalSettingsDialog(void);
+    virtual void            uiEvent(X2GUIExchangeInterface* uiex, const char* pszEvent);
 	
 	
 	// Implementation
@@ -213,19 +217,25 @@ private:
 	MutexInterface*							m_pIOMutex;
 	TickCountInterface*						m_pTickCount;
 	
+    
+    // Variables for 
 	// Variables for AstroTrac
-  AstroTrac mAstroTrac;
+    AstroTrac mAstroTrac;
 
-  bool m_bLinked;
+    bool m_bLinked;
 
-  char m_PortName[MAX_PORT_NAME_SIZE];
-	
-  int m_CurrentRateIndex;
+    char m_PortName[MAX_PORT_NAME_SIZE];
 
-  void portNameOnToCharPtr(char* pszPort, const unsigned int& nMaxSize) const;
+    int m_CurrentRateIndex;
 
-  int m_iNTrackingOff = 0;
+    void portNameOnToCharPtr(char* pszPort, const unsigned int& nMaxSize) const;
 
+    int m_iNTrackingOff = 0;
+    
+    int m_iGuideRateIndex = 0; //Default - 0.1x siderial
+
+    double m_dHoursPastMeridian = 0.0;
+    
 #ifdef AstroTrac_X2_DEBUG
     std::string m_sLogfilePath;
     char *timestamp;

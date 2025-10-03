@@ -29,14 +29,14 @@
 
 
 // #define PLUGIN_DEBUG 1   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
-#define DRIVER_VERSION 1.1
+#define DRIVER_VERSION 1.2
 
 // Changelog:
 // Version  1.0: Initial release
 //          1.1: Added pulseguide
+//          1.2: Added setting to control guide rate and how much mount will track beyond the pole.
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
-
 
 enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BAD_CMD_RESPONSE, COMMAND_FAILED, PLUGIN_ERROR};
 
@@ -77,6 +77,8 @@ public:
     int setTrackingRates(bool bTrackingOn, bool bIgnoreRates, double dTrackRaArcSecPerSec, double dTrackDecArcSecPerSec);
     int getTrackRates(bool &bTrackingOn, double &dTrackRaArcSecPerSec, double &dTrackDecArcSecPerSec);
 
+    int getNumberGuideRates(void) {return m_iNumberGuideRates;};
+    
     int startSlewTo(double dHa, double dDec, double dRa);
     int isSlewToComplete(bool &bComplete);
     int endSlewTo();
@@ -158,6 +160,8 @@ private:
     
     std::vector<std::string>    m_svSlewRateNames = {"0.1x", "0.25x", "0.5x", "1x (siderial)", "2x", "4x", "8x", "16x", "32x", "64x", "128x", "256x", "512x"};
     std::vector<double>    m_dvSlewRates = {0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0};
+    
+    int const m_iNumberGuideRates = 4;
     
     // CStopWatch      timer;
 

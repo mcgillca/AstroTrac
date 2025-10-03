@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>462</width>
-    <height>292</height>
+    <height>350</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -19,13 +19,13 @@
   <property name="minimumSize">
    <size>
     <width>462</width>
-    <height>292</height>
+    <height>350</height>
    </size>
   </property>
   <property name="maximumSize">
    <size>
     <width>462</width>
-    <height>292</height>
+    <height>350</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -62,16 +62,16 @@
       </size>
      </property>
      <property name="frameShape">
-      <enum>QFrame::StyledPanel</enum>
+      <enum>QFrame::Shape::StyledPanel</enum>
      </property>
      <property name="frameShadow">
-      <enum>QFrame::Raised</enum>
+      <enum>QFrame::Shadow::Raised</enum>
      </property>
      <widget class="QPushButton" name="pushButtonOK">
       <property name="geometry">
        <rect>
-        <x>328</x>
-        <y>216</y>
+        <x>330</x>
+        <y>270</y>
         <width>81</width>
         <height>32</height>
        </rect>
@@ -86,8 +86,8 @@
      <widget class="QPushButton" name="pushButtonCancel">
       <property name="geometry">
        <rect>
-        <x>240</x>
-        <y>216</y>
+        <x>230</x>
+        <y>270</y>
         <width>81</width>
         <height>32</height>
        </rect>
@@ -99,14 +99,14 @@
      <widget class="QLabel" name="label_5">
       <property name="geometry">
        <rect>
-        <x>96</x>
-        <y>144</y>
-        <width>240</width>
+        <x>70</x>
+        <y>140</y>
+        <width>281</width>
         <height>32</height>
        </rect>
       </property>
       <property name="text">
-       <string>© RTI-Zone.org and Colin McGill  2021</string>
+       <string>© RTI-Zone.org and Colin McGill  2021-2025</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_logo_2">
@@ -128,23 +128,62 @@
        <bool>true</bool>
       </property>
       <property name="alignment">
-       <set>Qt::AlignCenter</set>
+       <set>Qt::AlignmentFlag::AlignCenter</set>
       </property>
       <property name="X2_PhotoFileName" stdset="0">
        <string>AstroTrac360.png</string>
       </property>
      </widget>
+     <widget class="QDoubleSpinBox" name="doubleSpinBox">
+      <property name="geometry">
+       <rect>
+        <x>320</x>
+        <y>180</y>
+        <width>62</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="maximum">
+       <double>6.000000000000000</double>
+      </property>
+      <property name="singleStep">
+       <double>0.250000000000000</double>
+      </property>
+     </widget>
+     <widget class="QComboBox" name="comboBox">
+      <property name="geometry">
+       <rect>
+        <x>290</x>
+        <y>220</y>
+        <width>103</width>
+        <height>32</height>
+       </rect>
+      </property>
+     </widget>
      <widget class="QLabel" name="label">
       <property name="geometry">
        <rect>
-        <x>136</x>
-        <y>184</y>
-        <width>160</width>
+        <x>50</x>
+        <y>180</y>
+        <width>181</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Hours tracking past Meridian</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_2">
+      <property name="geometry">
+       <rect>
+        <x>50</x>
+        <y>230</y>
+        <width>171</width>
         <height>16</height>
        </rect>
       </property>
       <property name="text">
-       <string>Nothing to configure yet.</string>
+       <string>Pulse Guide Rate</string>
       </property>
      </widget>
     </widget>
