@@ -325,11 +325,12 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
         // never created an extra reply to worry about.
         //
         // waitForBytesRx(1, EXTRA_REPLY_WAIT_MS) was tried in place of the sleep+peek below, to
-        // give a genuinely in-flight duplicate a short bounded window to land, but measurement
-        // showed it does not honor the requested timeout either (like readFile's MAX_TIMEOUT) -
-        // it took ~1 second regardless of the 150ms asked for, on essentially every command.
-        // Sleeping ourselves for a fixed, known duration before a non-blocking peek sidesteps
-        // relying on the SDK's timeout handling at all.
+        // give a genuinely in-flight duplicate a short bounded window to land. Confirmed by direct
+        // measurement (both before and after ruling out a degraded-connection explanation) that it
+        // does not honor the requested timeout on the "nothing yet" path - it returns instantly
+        // when data is already there, but takes ~0.9s regardless of the requested value otherwise,
+        // same as readFile's MAX_TIMEOUT. Sleeping ourselves for a fixed, known duration before a
+        // non-blocking peek sidesteps relying on the SDK's timeout handling at all.
         if (bIsRetry) {
             unsigned char szExtra[SERIAL_BUFFER_SIZE];
             int nExtraTries;
