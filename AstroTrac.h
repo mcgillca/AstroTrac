@@ -28,7 +28,7 @@
 // #include "StopWatch.h"
 
 
-#define PLUGIN_DEBUG 0   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
+#define PLUGIN_DEBUG 1   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
 #define DRIVER_VERSION 1.6
 
 // Changelog:
