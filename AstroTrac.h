@@ -28,13 +28,17 @@
 // #include "StopWatch.h"
 
 
-// #define PLUGIN_DEBUG 1   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
-#define DRIVER_VERSION 1.2
+#define PLUGIN_DEBUG 0   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
+#define DRIVER_VERSION 1.5
 
 // Changelog:
 // Version  1.0: Initial release
 //          1.1: Added pulseguide
 //          1.2: Added setting to control guide rate and how much mount will track beyond the pole.
+//          1.3: Fixed bug where command send ok but no response caused new command to be sent and two responses given, causing errors when parsing the next response.
+//          1.4: Fixed bug in pulseguiding - selected rated was index+1.
+//          1.5: Replaced sprintf with snprintf and added code to track timing of open loop slews and to send commands to Astrotrac (about 0.015s per axis). Also defined number of slew rates dynamically by reading from size of m_dvSlewRates.
+
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
 
@@ -45,9 +49,8 @@ enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BA
 #define PLUGIN_LOG_BUFFER_SIZE 256
 #define ERR_PARSE   1
 
-#define PLUGIN_NB_SLEW_SPEEDS 11
-
 #define MAXSENDTRIES 3  // Maximum number of attempts to send a mesage to the mount
+#define MAX_STALE_RESPONSE_TRIES 2  // Maximum number of stray/stale replies to discard while looking for the real response to a command
 
 
 // Define Class for Astrometric Instruments AstroTrac controller.
@@ -149,6 +152,7 @@ private:
     int     AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen);
     int     AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen);
     int     AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int bufferLen);
+    bool    responseMatchesCommand(const char *pszCmd, const unsigned char *pszResp);
 
     
     // Functions to encapsulate transform from drive 1 and drive 2 position angles to positions on the sky
@@ -163,7 +167,10 @@ private:
     
     int const m_iNumberGuideRates = 4;
     
-    // CStopWatch      timer;
+    struct timespec  m_OpenLoopStartTimeRA;
+    struct timespec  m_OpenLoopStartTimeDEC;
+    bool    m_bOpenLoopRA = false;
+    bool    m_bOpenLoopDEC = false;
 
     
 #ifdef PLUGIN_DEBUG
