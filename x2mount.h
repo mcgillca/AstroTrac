@@ -39,7 +39,7 @@
 //#define TRAC_PAST_MERIDIAN 1.0   // Allow mount to track this much beyond the Meridian - set to 1 hour for now
 #define N_TRACK_STOP       4     // Require 4 successive location co-ordinates beyond limits (meridian or horizon) to stop tracking
 
-// #define AstroTrac_X2_DEBUG  2  // Define this to have log files. 1 for just bad things, 2 for general stuff.
+//#define AstroTrac_X2_DEBUG  2  // Define this to have log files. 1 for just bad things, 2 for general stuff.
 
 #if defined(SB_WIN_BUILD)
 #define DEF_PORT_NAME					"COM1"
@@ -155,7 +155,7 @@ public:
     //PulseGuideInterface
     virtual int useOpenLoopMoveInterface(int& nGuideRateIndex, OpenLoopMoveInterface** pOLSI)
     {
-        nGuideRateIndex = m_iGuideRateIndex+1; // nGuideRateIndex seems to be based to start at 1.
+        nGuideRateIndex = m_iGuideRateIndex; 
         return queryAbstraction(OpenLoopMoveInterface_Name, (void**)pOLSI);
     }
 	
