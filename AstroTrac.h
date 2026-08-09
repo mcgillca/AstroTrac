@@ -140,6 +140,7 @@ private:
     double m_dVSlewMax = 3 * 3600.0; // Maximum slew velocity - 3 deg/sec in arcsec/sec
     double m_dAslewRA = 3600.0;    // RA/HA axis slew acceleration - arcsec/sec/sec - read from mount at connect, never set by us
     double m_dAslewDEC = 3600.0;   // DEC axis slew acceleration - arcsec/sec/sec - read from mount at connect, never set by us
+                                    // Currently unused: DEC needs no sidereal lead-compensation (see startSlewTo), so nothing consumes this yet
     double m_dSlewOffset = 0.0;  // How wrong was last slew? Store and attempt to correct in next slew
     double  m_dGotoRATarget;     // Current Target RA - to allow slew offset to be calculated
     

@@ -848,9 +848,7 @@ int AstroTrac::startSlewTo(double dHa, double dDec, double dRa)
     double HAEncoder;
     double DEEncoder;
     bool bUseBTP = false;
-    double tHa;   // Time to slew in HA direction
-    double tDec;  // Time to slew in DEC direction
-    double tSlew; // Overall slew duration - the slew isn't done until both axes finish
+    double tHa; // Time to slew in HA direction
 
     // Reset slewing aborted flag
     m_bSlewingAborted = false;
@@ -861,26 +859,23 @@ int AstroTrac::startSlewTo(double dHa, double dDec, double dRa)
     // Convert dHA and dDec to encoder positions
     EncoderValuesfromHAanDEC(dHa, dDec, HAEncoder, DEEncoder, bUseBTP);
 
-    // Calculate time required to slew for each axis, using each axis's own acceleration. RA's
-    // sidereal lead-compensation below needs to use whichever axis takes longer overall, not just
-    // RA's own duration - e.g. if the slew is almost entirely a DEC move, tHa alone would be close
-    // to zero, but the mount is still busy slewing DEC for a while, during which RA's true sky
-    // position keeps drifting from sidereal motion.
+    // Calculate time required to slew in HA direction. Only RA needs this: the mount never stops
+    // the previously-set tracking velocity around a position slew (confirmed by testing), so RA
+    // resumes sidereal tracking the instant its own slew finishes, regardless of how long the DEC
+    // axis takes - no need to account for DEC's slew time here.
     tHa = slewTime(HAEncoder - m_dHAEncoder, m_dAslewRA);
-    tDec = slewTime(DEEncoder - m_dDecEncoder, m_dAslewDEC);
-    tSlew = std::max(tHa, tDec);
 
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] startSlewTo: dHa: %f HAEncoder %f, m_dHAEncoder %f, tHa %f, tDec %f, tSlew %f\n", timestamp, dHa, HAEncoder, m_dHAEncoder, tHa, tDec, tSlew);
+        fprintf(Logfile, "[%s] startSlewTo: dHa: %f HAEncoder %f, m_dHAEncoder %f, tHa %f\n", timestamp, dHa, HAEncoder, m_dHAEncoder, tHa);
         fflush(Logfile);
 #endif
 
-    // Formulate and send command to slew for RA axis - adding on time it takes to slew (remember to convert from arcsec to degrees)
+    // Formulate and send command to slew for RA axis - adding on time it takes to slew in the RA axis (remember to convert from arcsec to degrees)
     // m_dSlewOffset is initially zero, then set to the difference between actual and target RA after the slew has completed
-    snprintf(out, sizeof(out), "<1p%f>", HAEncoder + m_dSlewOffset + (m_bNorthernHemisphere ? 1.0: -1.0) * tSlew * AT_SIDEREAL_SPEED/3600.0);
+    snprintf(out, sizeof(out), "<1p%f>", HAEncoder + m_dSlewOffset + (m_bNorthernHemisphere ? 1.0: -1.0) * tHa * AT_SIDEREAL_SPEED/3600.0);
 
     nErr = AstroTracSendCommand(out, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
 
