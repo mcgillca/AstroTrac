@@ -52,7 +52,6 @@ enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BA
 
 #define MAXSENDTRIES 3  // Maximum number of attempts to send a mesage to the mount
 #define MAX_STALE_RESPONSE_TRIES 2  // Maximum number of stray/stale replies to discard while looking for the real response to a command
-#define EXTRA_REPLY_WAIT_MS 150  // Bounded wait for a duplicate reply to a repeated command that may still be in flight
 
 
 // Define Class for Astrometric Instruments AstroTrac controller.
@@ -152,7 +151,7 @@ private:
     double  m_dHoursWest;
     
     int     AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen);
-    int     AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen);
+    int     AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen, bool bIsRetry);
     int     AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int bufferLen);
     bool    responseMatchesCommand(const char *pszCmd, const unsigned char *pszResp);
 

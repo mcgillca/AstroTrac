@@ -193,6 +193,17 @@ int AstroTrac::Disconnect(void)
 
 
 #pragma mark - AstroTrac communication
+
+// Length of the "<axis><code>" prefix of a command string, e.g. 3 for "<1p...", 4 for
+// "<1zv...". Assumes pszCmd starts with '<' followed by an axis digit.
+static size_t CommandPrefixLen(const char *pszCmd)
+{
+    size_t i = 2;
+    while (pszCmd[i] && isalpha((unsigned char)pszCmd[i]))
+        i++;
+    return i;
+}
+
 int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen)
 {
     int itries;
@@ -201,7 +212,7 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
     *pszResult = 0; // Clear pszResult
 
     for (itries = 0; itries < MAXSENDTRIES; itries++) {
-        nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen);
+        nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen, itries > 0);
         if (nErr == PLUGIN_OK) return nErr;
 
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
@@ -217,7 +228,7 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
 
 }
 
-int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen)
+int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen, bool bIsRetry)
 {
     int nErr = PLUGIN_OK;
     unsigned char szResp[SERIAL_BUFFER_SIZE];
@@ -305,38 +316,43 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
             }
         }
 
-        // We now have a reply that matches pszCmd, but if this same command was sent more than
-        // once (e.g. a repeated poll where an earlier attempt was resent after a read failure),
-        // an extra reply to an earlier send may still be in flight - and prefix-matching alone
-        // cannot tell it apart from a fresh reply, since it is a reply to the very same command.
-        // Give it a short, bounded window (EXTRA_REPLY_WAIT_MS) to arrive - never wait a full
-        // read timeout for something that may never come. Log the requested vs. actual elapsed
-        // time, since other timeouts in this driver have not honored the requested value.
-        {
+        // bIsRetry means AstroTracSendCommand already had to call us again for pszCmd after an
+        // earlier attempt failed - i.e. we resent it - so an extra reply to that earlier send may
+        // still be sitting in, or arriving into, the receive buffer, and prefix-matching alone
+        // cannot tell it apart from this fresh reply, since it is a reply to the very same
+        // command. Only worth checking when a resend has actually happened; a first-try success
+        // never created an extra reply to worry about.
+        //
+        // waitForBytesRx(1, EXTRA_REPLY_WAIT_MS) was tried in place of the sleep+peek below, to
+        // give a genuinely in-flight duplicate a short bounded window to land, but measurement
+        // showed it does not honor the requested timeout either (like readFile's MAX_TIMEOUT) -
+        // it took ~1 second regardless of the 150ms asked for, on essentially every command.
+        // Sleeping ourselves for a fixed, known duration before a non-blocking peek sidesteps
+        // relying on the SDK's timeout handling at all.
+        if (bIsRetry) {
             unsigned char szExtra[SERIAL_BUFFER_SIZE];
             int nExtraTries;
 
             for (nExtraTries = 0; nExtraTries < MAX_STALE_RESPONSE_TRIES; nExtraTries++) {
-                struct timespec wbStart, wbEnd;
-                double wbElapsed;
-                int nErrWait;
+                int nBytesWaiting = 0;
+                int nErrPeek;
 
-                clock_gettime(CLOCK_MONOTONIC, &wbStart);
-                nErrWait = m_pSerx->waitForBytesRx(1, EXTRA_REPLY_WAIT_MS);
-                clock_gettime(CLOCK_MONOTONIC, &wbEnd);
-                wbElapsed = (wbEnd.tv_sec - wbStart.tv_sec) + (wbEnd.tv_nsec - wbStart.tv_nsec) * 1e-9;
+                if (m_pSleeper)
+                    m_pSleeper->sleep(200);
+
+                nErrPeek = m_pSerx->bytesWaitingRx(nBytesWaiting);
+
+                if (nErrPeek || nBytesWaiting <= 0)
+                    break;
 
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                 ltime = time(NULL);
                 timestamp = asctime(localtime(&ltime));
                 timestamp[strlen(timestamp) - 1] = 0;
-                fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] waitForBytesRx(1, %dms) for Cmd: %s returned %d after %.3f seconds (attempt %d/%d)\n",
-                        timestamp, EXTRA_REPLY_WAIT_MS, pszCmd, nErrWait, wbElapsed, nExtraTries + 1, MAX_STALE_RESPONSE_TRIES);
+                fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] %d more byte(s) already waiting after matching reply for Cmd: %s -- reading likely duplicate reply (attempt %d/%d)\n",
+                        timestamp, nBytesWaiting, pszCmd, nExtraTries + 1, MAX_STALE_RESPONSE_TRIES);
                 fflush(Logfile);
 #endif
-                if (nErrWait)
-                    break;
-
                 if (AstroTracreadResponse(szExtra, SERIAL_BUFFER_SIZE) || !responseMatchesCommand(pszCmd, szExtra)) {
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                     ltime = time(NULL);
@@ -411,9 +427,7 @@ bool AstroTrac::responseMatchesCommand(const char *pszCmd, const unsigned char *
     if (pszResp[2] == 'e' && pszCmd[2] != 'e') // genuine device error reply
         return true;
 
-    i = 2;
-    while (pszCmd[i] && isalpha((unsigned char)pszCmd[i]))
-        i++;
+    i = CommandPrefixLen(pszCmd);
 
     if (strncmp(pszCmd, (const char *)pszResp, i) == 0)
         return true;
