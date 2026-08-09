@@ -29,7 +29,7 @@
 
 
 #define PLUGIN_DEBUG 0   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
-#define DRIVER_VERSION 1.5
+#define DRIVER_VERSION 1.6
 
 // Changelog:
 // Version  1.0: Initial release
@@ -38,6 +38,7 @@
 //          1.3: Fixed bug where command send ok but no response caused new command to be sent and two responses given, causing errors when parsing the next response.
 //          1.4: Fixed bug in pulseguiding - selected rated was index+1.
 //          1.5: Replaced sprintf with snprintf and added code to track timing of open loop slews and to send commands to Astrotrac (about 0.015s per axis). Also defined number of slew rates dynamically by reading from size of m_dvSlewRates.
+//          1.6: Fixed command/response desync: always resend on retry instead of waiting for two failed reads, validate replies against the command sent, and drain stale/duplicate replies so command/response pairs stay in sync.
 
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
