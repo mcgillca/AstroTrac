@@ -138,7 +138,8 @@ private:
     
     // Variables to calculate slew time and improve Slew
     double m_dVSlewMax = 3 * 3600.0; // Maximum slew velocity - 3 deg/sec in arcsec/sec
-    double m_dAslew = 3600.0;    // Slew Acceleration - arcsec/sec
+    double m_dAslewRA = 3600.0;    // RA/HA axis slew acceleration - arcsec/sec/sec - read from mount at connect, never set by us
+    double m_dAslewDEC = 3600.0;   // DEC axis slew acceleration - arcsec/sec/sec - read from mount at connect, never set by us
     double m_dSlewOffset = 0.0;  // How wrong was last slew? Store and attempt to correct in next slew
     double  m_dGotoRATarget;     // Current Target RA - to allow slew offset to be calculated
     
@@ -161,7 +162,7 @@ private:
     void HAandDECfromEncoderValues(double RAEncoder, double DEEncoder, double &dHa, double &dDec);
     
     // Function to calculate slew time
-    double slewTime(double dDist);
+    double slewTime(double dDist, double dAccel);
     
     std::vector<std::string>    m_svSlewRateNames = {"0.1x", "0.25x", "0.5x", "1x (siderial)", "2x", "4x", "8x", "16x", "32x", "64x", "128x", "256x", "512x"};
     std::vector<double>    m_dvSlewRates = {0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0};

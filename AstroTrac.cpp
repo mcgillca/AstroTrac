@@ -91,18 +91,22 @@ int AstroTrac::Connect(char *pszPort)
     
     // Read the maximum slew velocity
     nErr = AstroTracSendCommand("<1zs?>", szResp, SERIAL_BUFFER_SIZE); if (nErr) return ERR_CMDFAILED;
-    
-    // Remove the last character (>)
-    szResp[strlen(szResp) - 1] = '\0';
-    
+
     // Read max slew rate from 5th character of response
     m_dVSlewMax = atof(szResp+4);
-    
+
+    // Read the per-axis slew acceleration already configured on the mount. We only ever read
+    // this - startSlewTo no longer writes an acceleration value back to the device - so a user's
+    // own setting (e.g. tuned for a heavier rig) is left alone; we just use it to estimate slew
+    // duration.
+    nErr = AstroTracSendCommand("<1a?>", szResp, SERIAL_BUFFER_SIZE); if (nErr) return ERR_CMDFAILED;
+    m_dAslewRA = atof(szResp+3);
+
+    nErr = AstroTracSendCommand("<2a?>", szResp, SERIAL_BUFFER_SIZE); if (nErr) return ERR_CMDFAILED;
+    m_dAslewDEC = atof(szResp+3);
+
     // Get the RA velocity to set the initial tracking rates
     nErr = AstroTracSendCommand("<1v?>", szResp, SERIAL_BUFFER_SIZE); if (nErr) return ERR_CMDFAILED;
-    
-    // Remove the last character (>)
-    szResp[strlen(szResp) - 1] = '\0';
 
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
     ltime = time(NULL);
@@ -117,10 +121,7 @@ int AstroTrac::Connect(char *pszPort)
     // Now repeat for DEC velocity
     // Get the RA velocity to set the initial tracking rates
     nErr = AstroTracSendCommand("<2v?>", szResp, SERIAL_BUFFER_SIZE); if (nErr) return ERR_CMDFAILED;
-    
-    // Remove the last character (>)
-    szResp[strlen(szResp) - 1] = '\0';
-    
+
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
     ltime = time(NULL);
     timestamp = asctime(localtime(&ltime));
@@ -577,20 +578,15 @@ int AstroTrac::getHaAndDec(double &dHa, double &dDec)
     fflush(Logfile);
 #endif
 
-    // Remove closing ">" and convert to float - ignoring first 3 characters
-    szResp[strlen(szResp)-1] = '\0';
-    
-    // RA Encoder measured in degrees - stored in private variable too
+    // RA Encoder measured in degrees - stored in private variable too, ignoring first 3 characters
     m_dHAEncoder = atof(szResp+3);
 
     // get DEC encoder values
     nErr = AstroTracSendCommand("<2p?>", szResp, SERIAL_BUFFER_SIZE);
     if(nErr)
         return nErr;
-    // Remove closing ">" and convert to float - ignoring first 3 characters
-    szResp[strlen(szResp)-1] = '\0';
-    
-    // Dec Encoder measured in degrees - stored in private variable too
+
+    // Dec Encoder measured in degrees - stored in private variable too, ignoring first 3 characters
     m_dDecEncoder = atof(szResp+3);
     
     // Now convert encoder values to HA and DEC
@@ -810,24 +806,24 @@ int AstroTrac::getTrackRates(bool &bTrackingOn, double &dTrackRaArcSecperSec, do
 
 #pragma mark - Slew
 
-// Function to estimate time to slew - distance in degrees
-double AstroTrac::slewTime(double dDist)
+// Function to estimate time to slew - distance in degrees, dAccel is the acceleration (arcsec/sec/sec) of the axis being slewed
+double AstroTrac::slewTime(double dDist, double dAccel)
 {
     double tslew;  // Estimate of time for slew
     double accelndist; // Estimate of distance covered by acceleration and deceleration period
-    
+
     // Firstly throw away sign of distance - don't care about direction - and convert to arcsec
     dDist = fabs(dDist) * 3600.0;
-    
+
     // Now estimate how far mount travels during accelertion and deceleration period
-    accelndist = m_dVSlewMax * m_dVSlewMax / m_dAslew;
-    
+    accelndist = m_dVSlewMax * m_dVSlewMax / dAccel;
+
     // If distance less than this, then calulate using accleration forumlae:
     if (dDist < accelndist) {
-        tslew = 2 * sqrt(dDist/m_dAslew);
+        tslew = 2 * sqrt(dDist/dAccel);
     } else {
         // Time is equal to twice the time required to accelerate or decelerate, plus the remaining distance at max slew speed
-        tslew = 2.0 * m_dVSlewMax/m_dAslew + (dDist-accelndist)/m_dVSlewMax;
+        tslew = 2.0 * m_dVSlewMax/dAccel + (dDist-accelndist)/m_dVSlewMax;
     }
     
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
@@ -849,39 +845,42 @@ int AstroTrac::startSlewTo(double dHa, double dDec, double dRa)
     double HAEncoder;
     double DEEncoder;
     bool bUseBTP = false;
-    double tHa; // Time to slew in HA direction
-    
+    double tHa;   // Time to slew in HA direction
+    double tDec;  // Time to slew in DEC direction
+    double tSlew; // Overall slew duration - the slew isn't done until both axes finish
+
     // Reset slewing aborted flag
     m_bSlewingAborted = false;
-    
+
     // Store slew target for use later
     m_dGotoRATarget = dRa;
 
     // Convert dHA and dDec to encoder positions
     EncoderValuesfromHAanDEC(dHa, dDec, HAEncoder, DEEncoder, bUseBTP);
 
-    // Calculate time required to slew for each axis:
-    tHa = slewTime(HAEncoder - m_dHAEncoder);
-    
+    // Calculate time required to slew for each axis, using each axis's own acceleration. RA's
+    // sidereal lead-compensation below needs to use whichever axis takes longer overall, not just
+    // RA's own duration - e.g. if the slew is almost entirely a DEC move, tHa alone would be close
+    // to zero, but the mount is still busy slewing DEC for a while, during which RA's true sky
+    // position keeps drifting from sidereal motion.
+    tHa = slewTime(HAEncoder - m_dHAEncoder, m_dAslewRA);
+    tDec = slewTime(DEEncoder - m_dDecEncoder, m_dAslewDEC);
+    tSlew = std::max(tHa, tDec);
+
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
         timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] startSlewTo: dHa: %f HAEncoder %f, m_dHAEncoder %f, tHA %f\n", timestamp, dHa, HAEncoder, m_dHAEncoder, tHa);
+        fprintf(Logfile, "[%s] startSlewTo: dHa: %f HAEncoder %f, m_dHAEncoder %f, tHa %f, tDec %f, tSlew %f\n", timestamp, dHa, HAEncoder, m_dHAEncoder, tHa, tDec, tSlew);
         fflush(Logfile);
 #endif
-    
-    // Formulate and send command to set acceleration to use during the slew - can get changed during guiding
-    snprintf(out, sizeof(out), "<1a%d>",  (int) m_dAslew);
-    nErr = AstroTracSendCommand(out, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
-    
-    // Formulate and send command to slew for RA axis - adding on time it takes to slew in the RA axis (remember to convert from arcsec to degrees)
+
+    // Formulate and send command to slew for RA axis - adding on time it takes to slew (remember to convert from arcsec to degrees)
     // m_dSlewOffset is initially zero, then set to the difference between actual and target RA after the slew has completed
-    
-    snprintf(out, sizeof(out), "<1p%f>", HAEncoder + m_dSlewOffset + (m_bNorthernHemisphere ? 1.0: -1.0) * tHa * AT_SIDEREAL_SPEED/3600.0);
-    
+    snprintf(out, sizeof(out), "<1p%f>", HAEncoder + m_dSlewOffset + (m_bNorthernHemisphere ? 1.0: -1.0) * tSlew * AT_SIDEREAL_SPEED/3600.0);
+
     nErr = AstroTracSendCommand(out, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
- 
+
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
         ltime = time(NULL);
         timestamp = asctime(localtime(&ltime));
@@ -889,11 +888,7 @@ int AstroTrac::startSlewTo(double dHa, double dDec, double dRa)
         fprintf(Logfile, "[%s] startSlewTo: dHa: %f command: %s response %s\n", timestamp, dHa, out, szResp);
         fflush(Logfile);
 #endif
-    
-    // Formulate and send command to set acceleration to use during the slew - can get changed during guiding
-    snprintf(out, sizeof(out), "<2a%d>",  (int) m_dAslew);
-    
-    nErr = AstroTracSendCommand(out, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
+
     // Formulate and send command to slew for DEC axis
     snprintf(out, sizeof(out), "<2p%f>", DEEncoder);
     nErr = AstroTracSendCommand(out, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
@@ -926,10 +921,7 @@ int AstroTrac::endSlewTo(){
         return nErr;
     }
 
-    // Remove closing ">" and convert to float - ignoring first 3 characters
-    szResp[strlen(szResp)-1] = '\0';
-    
-    // RA Encoder measured in degrees - stored in private variable
+    // RA Encoder measured in degrees - stored in private variable, ignoring first 3 characters
     m_dHAEncoder = atof(szResp+3);
     
     // Calculate current HA of slew target
