@@ -463,9 +463,11 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
             timestamp = asctime(localtime(&ltime));
             timestamp[strlen(timestamp) - 1] = 0;
             if (nErr)
-                fprintf(Logfile, "[%s] [AstroTrac::readResponse] readFile error %d after %.3f seconds\n", timestamp, nErr, rfElapsed);
+                fprintf(Logfile, "[%s] [AstroTrac::readResponse] readFile error %d after %.3f seconds (had %lu byte(s) so far: '%s')\n",
+                        timestamp, nErr, rfElapsed, ulTotalBytesRead, pszRespBuffer);
             else
-                fprintf(Logfile, "[%s] [AstroTrac::readResponse] readFile timed out (0 bytes received) after %.3f seconds\n", timestamp, rfElapsed);
+                fprintf(Logfile, "[%s] [AstroTrac::readResponse] readFile got %lu byte(s) (wanted 1) after %.3f seconds (had %lu byte(s) so far: '%s')\n",
+                        timestamp, ulBytesRead, rfElapsed, ulTotalBytesRead, pszRespBuffer);
             fflush(Logfile);
 #endif
             if (nErr) return nErr;
