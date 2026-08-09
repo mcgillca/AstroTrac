@@ -28,7 +28,7 @@
 // #include "StopWatch.h"
 
 
-#define PLUGIN_DEBUG 1   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
+#define PLUGIN_DEBUG 0   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
 #define DRIVER_VERSION 1.6
 
 // Changelog:
@@ -52,6 +52,7 @@ enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BA
 
 #define MAXSENDTRIES 3  // Maximum number of attempts to send a mesage to the mount
 #define MAX_STALE_RESPONSE_TRIES 2  // Maximum number of stray/stale replies to discard while looking for the real response to a command
+#define EXTRA_REPLY_WAIT_MS 150  // Bounded wait for a duplicate reply to a repeated command that may still be in flight
 
 
 // Define Class for Astrometric Instruments AstroTrac controller.

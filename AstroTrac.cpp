@@ -270,7 +270,7 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
             int nStaleTries;
 
             for (nStaleTries = 0; nStaleTries < MAX_STALE_RESPONSE_TRIES && !responseMatchesCommand(pszCmd, szResp); nStaleTries++) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                 ltime = time(NULL);
                 timestamp = asctime(localtime(&ltime));
                 timestamp[strlen(timestamp) - 1] = 0;
@@ -280,7 +280,7 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
 #endif
                 nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE);
                 if (nErr) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                     ltime = time(NULL);
                     timestamp = asctime(localtime(&ltime));
                     timestamp[strlen(timestamp) - 1] = 0;
@@ -293,7 +293,7 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
             }
 
             if (!responseMatchesCommand(pszCmd, szResp)) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                 ltime = time(NULL);
                 timestamp = asctime(localtime(&ltime));
                 timestamp[strlen(timestamp) - 1] = 0;
@@ -307,32 +307,38 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
 
         // We now have a reply that matches pszCmd, but if this same command was sent more than
         // once (e.g. a repeated poll where an earlier attempt was resent after a read failure),
-        // an extra reply to an earlier send may already be sitting in the receive buffer right
-        // behind this one - and prefix-matching alone cannot tell it apart from a fresh reply,
-        // since it is a reply to the very same command. Only drain what has PROVABLY already
-        // arrived (bytesWaitingRx is non-blocking) and keep the most recent one - never wait
-        // around on the chance that another reply might still be coming.
+        // an extra reply to an earlier send may still be in flight - and prefix-matching alone
+        // cannot tell it apart from a fresh reply, since it is a reply to the very same command.
+        // Give it a short, bounded window (EXTRA_REPLY_WAIT_MS) to arrive - never wait a full
+        // read timeout for something that may never come. Log the requested vs. actual elapsed
+        // time, since other timeouts in this driver have not honored the requested value.
         {
             unsigned char szExtra[SERIAL_BUFFER_SIZE];
             int nExtraTries;
 
             for (nExtraTries = 0; nExtraTries < MAX_STALE_RESPONSE_TRIES; nExtraTries++) {
-                int nBytesWaiting = 0;
-                int nErrPeek = m_pSerx->bytesWaitingRx(nBytesWaiting);
+                struct timespec wbStart, wbEnd;
+                double wbElapsed;
+                int nErrWait;
 
-                if (nErrPeek || nBytesWaiting <= 0)
-                    break;
+                clock_gettime(CLOCK_MONOTONIC, &wbStart);
+                nErrWait = m_pSerx->waitForBytesRx(1, EXTRA_REPLY_WAIT_MS);
+                clock_gettime(CLOCK_MONOTONIC, &wbEnd);
+                wbElapsed = (wbEnd.tv_sec - wbStart.tv_sec) + (wbEnd.tv_nsec - wbStart.tv_nsec) * 1e-9;
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                 ltime = time(NULL);
                 timestamp = asctime(localtime(&ltime));
                 timestamp[strlen(timestamp) - 1] = 0;
-                fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] %d more byte(s) already waiting after matching reply for Cmd: %s -- reading likely duplicate reply (attempt %d/%d)\n",
-                        timestamp, nBytesWaiting, pszCmd, nExtraTries + 1, MAX_STALE_RESPONSE_TRIES);
+                fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] waitForBytesRx(1, %dms) for Cmd: %s returned %d after %.3f seconds (attempt %d/%d)\n",
+                        timestamp, EXTRA_REPLY_WAIT_MS, pszCmd, nErrWait, wbElapsed, nExtraTries + 1, MAX_STALE_RESPONSE_TRIES);
                 fflush(Logfile);
 #endif
+                if (nErrWait)
+                    break;
+
                 if (AstroTracreadResponse(szExtra, SERIAL_BUFFER_SIZE) || !responseMatchesCommand(pszCmd, szExtra)) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                     ltime = time(NULL);
                     timestamp = asctime(localtime(&ltime));
                     timestamp[strlen(timestamp) - 1] = 0;
@@ -343,7 +349,7 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
                     break;
                 }
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                 ltime = time(NULL);
                 timestamp = asctime(localtime(&ltime));
                 timestamp[strlen(timestamp) - 1] = 0;
@@ -386,6 +392,9 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
 // its prefix will belong to that earlier command instead and won't match here.
 // Device-reported errors ("<axis>e<code>") are always accepted as a genuine match,
 // since they are a real reply to the command just sent, just carrying an error code.
+// Some set/action command acks come back with the '#' and the code letters swapped
+// versus what the manual documents, e.g. "<1a3600>" ("Set Acceleration") is
+// acknowledged as "<1#a>" rather than "<1a#>" - accept that ordering too.
 bool AstroTrac::responseMatchesCommand(const char *pszCmd, const unsigned char *pszResp)
 {
     size_t i;
@@ -406,7 +415,13 @@ bool AstroTrac::responseMatchesCommand(const char *pszCmd, const unsigned char *
     while (pszCmd[i] && isalpha((unsigned char)pszCmd[i]))
         i++;
 
-    return strncmp(pszCmd, (const char *)pszResp, i) == 0;
+    if (strncmp(pszCmd, (const char *)pszResp, i) == 0)
+        return true;
+
+    if (pszResp[2] == '#' && strncmp(pszCmd + 2, (const char *)pszResp + 3, i - 2) == 0)
+        return true;
+
+    return false;
 }
 
 int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int nBufferLen)
