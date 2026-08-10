@@ -7,6 +7,7 @@
 #include <memory.h>
 #include <string.h>
 #include <time.h>
+#include <stdarg.h>
 #ifdef SB_MAC_BUILD
 #include <unistd.h>
 #endif
@@ -28,7 +29,18 @@
 // #include "StopWatch.h"
 
 
-#define PLUGIN_DEBUG 0   // define this to have log files, 1 = bad stuff only, 2 and up.. full debug
+// Comment out PLUGIN_DEBUG entirely for a production build - Logfile/LogDebug then compile away to
+// nothing (see LogDebug in AstroTrac.cpp). When defined, controls how much gets logged:
+//   0: Open-loop-move tracing (startOpenLoopMove/stopOpenLoopMove) - relevant to guiding performance.
+//   1: Notable/unexpected events worth a heads-up even outside active debugging - command outcome
+//      summaries (succeeded after N retries / FAILED), a malformed device error reply, an
+//      unexpectedly-mismatched extra reply, a response missing its closing '>'.
+//   2: Full trace of the send-command machinery (AstroTracSendCommand/AstroTracSendCommandInnerLoop/
+//      readResponse) - purge/resend decisions, stale/duplicate-reply draining, per-byte read
+//      timeouts. Only useful when actively debugging the comms protocol itself.
+//   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle, byte-level
+//      read trace.
+#define PLUGIN_DEBUG 0
 #define DRIVER_VERSION 1.6
 
 // Changelog:
@@ -156,6 +168,14 @@ private:
     int     AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen, bool bIsRetry);
     int     AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int bufferLen);
     bool    responseMatchesCommand(const char *pszCmd, const unsigned char *pszResp);
+
+    // Helpers used by AstroTracSendCommandInnerLoop, broken out for readability - see definitions
+    // for what each covers.
+    bool    PreparePortForSend(const char *pszCmd, bool bIsRetry);
+    int     WriteCommand(const char *pszCmd);
+    int     DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen);
+    void    DrainDuplicateReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen, bool bIsRetry);
+    void    LogDebug(int nLevel, const char *pszFormat, ...);
 
     
     // Functions to encapsulate transform from drive 1 and drive 2 position angles to positions on the sky

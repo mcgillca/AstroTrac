@@ -23,27 +23,15 @@ AstroTrac::AstroTrac()
 	Logfile = fopen(m_sLogfilePath.c_str(), "w");
 #endif
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-	timestamp = asctime(localtime(&ltime));
-	timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] [AstroTrac::AstroTrac] Version %3.2f build 2020_09_05_1140.\n", timestamp, DRIVER_VERSION);
-	fprintf(Logfile, "[%s] AstroTrac New Constructor Called\n", timestamp);
-    fflush(Logfile);
-#endif
+    LogDebug(3, "[AstroTrac::AstroTrac] Version %3.2f build 2020_09_05_1140.\n", DRIVER_VERSION);
+    LogDebug(3, "AstroTrac New Constructor Called\n");
 
 }
 
 
 AstroTrac::~AstroTrac(void)
 {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-	ltime = time(NULL);
-	timestamp = asctime(localtime(&ltime));
-	timestamp[strlen(timestamp) - 1] = 0;
-	fprintf(Logfile, "[%s] AstroTrac Destructor Called\n", timestamp );
-    fflush(Logfile);
-#endif
+    LogDebug(3, "AstroTrac Destructor Called\n");
 #ifdef PLUGIN_DEBUG
     // Close LogFile
     if (Logfile) fclose(Logfile);
@@ -55,13 +43,7 @@ int AstroTrac::Connect(char *pszPort)
     int nErr = SB_OK;
     char szResp[SERIAL_BUFFER_SIZE];
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-	ltime = time(NULL);
-	timestamp = asctime(localtime(&ltime));
-	timestamp[strlen(timestamp) - 1] = 0;
-	fprintf(Logfile, "[%s] AstroTrac::Connect Called %s\n", timestamp, pszPort);
-    fflush(Logfile);
-#endif
+    LogDebug(3, "AstroTrac::Connect Called %s\n", pszPort);
 
     // 115.2K 8N1
     if(m_pSerx->open(pszPort, 115200, SerXInterface::B_NOPARITY, "-DTR_CONTROL 1") == 0)
@@ -72,15 +54,8 @@ int AstroTrac::Connect(char *pszPort)
     if(!m_bIsConnected)
         return ERR_COMMNOLINK;
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] AstroTrac::Connect m_mountType %d\n", timestamp, m_mountType);
-    fflush(Logfile);
-#endif
+    LogDebug(3, "AstroTrac::Connect m_mountType %d\n", m_mountType);
 
-    
     // Set flat to indicate whether north or south latitude
     m_bNorthernHemisphere = (m_pTsx->latitude() > 0);
     // Set axis direction to AstroTrac
@@ -108,13 +83,8 @@ int AstroTrac::Connect(char *pszPort)
     // Get the RA velocity to set the initial tracking rates
     nErr = AstroTracSendCommand("<1v?>", szResp, SERIAL_BUFFER_SIZE); if (nErr) return ERR_CMDFAILED;
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] AstroTrac::Connect RAVel response %s\n", timestamp, szResp);
-    fflush(Logfile);
-#endif
+    LogDebug(3, "AstroTrac::Connect RAVel response %s\n", szResp);
+
     // Read tracking rate from 4th character of response
     m_dRATrackingRate = atof(szResp+3);
     
@@ -122,26 +92,14 @@ int AstroTrac::Connect(char *pszPort)
     // Get the RA velocity to set the initial tracking rates
     nErr = AstroTracSendCommand("<2v?>", szResp, SERIAL_BUFFER_SIZE); if (nErr) return ERR_CMDFAILED;
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] AstroTrac::Connect DECVel response %s\n", timestamp, szResp);
-    fflush(Logfile);
-#endif
-    
+    LogDebug(3, "AstroTrac::Connect DECVel response %s\n", szResp);
+
     // Read tracking rate from 4th character of response
     m_dDETrackingRate = atof(szResp+3);
-    
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] AstroTrac::Connect RAVel %f DECVel %f\n", timestamp, m_dRATrackingRate, m_dDETrackingRate);
-    fflush(Logfile);
-#endif
-    
-    
+
+    LogDebug(3, "AstroTrac::Connect RAVel %f DECVel %f\n", m_dRATrackingRate, m_dDETrackingRate);
+
+
     // Now tidy up the readings since there is some uncertainty
     // First see if there is any DEC velocity
     if (fabs(m_dDETrackingRate) < 0.001) {
@@ -164,22 +122,10 @@ int AstroTrac::Connect(char *pszPort)
 
 int AstroTrac::Disconnect(void)
 {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-	ltime = time(NULL);
-	timestamp = asctime(localtime(&ltime));
-	timestamp[strlen(timestamp) - 1] = 0;
-	fprintf(Logfile, "[%s] AstroTrac::Disconnect Called\n", timestamp);
-    fflush(Logfile);
-#endif
+    LogDebug(3, "AstroTrac::Disconnect Called\n");
 	if (m_bIsConnected) {
         if(m_pSerx){
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-            ltime = time(NULL);
-            timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(Logfile, "[%s] AstroTrac::Disconnect closing serial port\n", timestamp);
-            fflush(Logfile);
-#endif
+            LogDebug(3, "AstroTrac::Disconnect closing serial port\n");
             m_pSerx->flushTx();
             m_pSerx->purgeTxRx();
             m_pSerx->close();
@@ -195,6 +141,29 @@ int AstroTrac::Disconnect(void)
 
 #pragma mark - AstroTrac communication
 
+// Write a single debug log line if PLUGIN_DEBUG is defined and at least nLevel, otherwise a no-op.
+// Centralizes the timestamp/fprintf/fflush boilerplate that used to be repeated at every log site.
+void AstroTrac::LogDebug(int nLevel, const char *pszFormat, ...)
+{
+#ifdef PLUGIN_DEBUG
+    if (nLevel > PLUGIN_DEBUG)
+        return;
+
+    va_list args;
+
+    ltime = time(NULL);
+    timestamp = asctime(localtime(&ltime));
+    timestamp[strlen(timestamp) - 1] = 0;
+    fprintf(Logfile, "[%s] ", timestamp);
+
+    va_start(args, pszFormat);
+    vfprintf(Logfile, pszFormat, args);
+    va_end(args);
+
+    fflush(Logfile);
+#endif
+}
+
 // Length of the "<axis><code>" prefix of a command string, e.g. 3 for "<1p...", 4 for
 // "<1zv...". Assumes pszCmd starts with '<' followed by an axis digit.
 static size_t CommandPrefixLen(const char *pszCmd)
@@ -209,20 +178,33 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
 {
     int itries;
     int nErr = PLUGIN_OK;
+    struct timespec cmdStart, cmdNow;
+    clock_gettime(CLOCK_MONOTONIC, &cmdStart);
 
     *pszResult = 0; // Clear pszResult
 
     for (itries = 0; itries < MAXSENDTRIES; itries++) {
         nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen, itries > 0);
-        if (nErr == PLUGIN_OK) return nErr;
+        if (nErr == PLUGIN_OK) {
+            // Only log the ones that needed a retry - this is the total time from the first send
+            // attempt to a working reply, which is what a longer read timeout would need to beat.
+            if (itries > 0) {
+                clock_gettime(CLOCK_MONOTONIC, &cmdNow);
+                double cmdElapsed = (cmdNow.tv_sec - cmdStart.tv_sec) + (cmdNow.tv_nsec - cmdStart.tv_nsec) * 1e-9;
+                LogDebug(1, "AstroTrac::AstroTracSendCommand Cmd: %s succeeded after %d retries, %.3f seconds total\n",
+                         pszCmd, itries, cmdElapsed);
+            }
+            return nErr;
+        }
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] AstroTrac::AstroTracSendCommand itries %d Cmd: %s Result: %s \n", timestamp, itries, pszCmd, pszResult);
-    fflush(Logfile);
-#endif
+        LogDebug(2, "AstroTrac::AstroTracSendCommand itries %d Cmd: %s Result: %s \n", itries, pszCmd, pszResult);
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &cmdNow);
+    {
+        double cmdElapsed = (cmdNow.tv_sec - cmdStart.tv_sec) + (cmdNow.tv_nsec - cmdStart.tv_nsec) * 1e-9;
+        LogDebug(1, "AstroTrac::AstroTracSendCommand Cmd: %s FAILED after %d tries, %.3f seconds total\n",
+                 pszCmd, itries, cmdElapsed);
     }
 
     return nErr;
@@ -233,174 +215,175 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
 {
     int nErr = PLUGIN_OK;
     unsigned char szResp[SERIAL_BUFFER_SIZE];
-    unsigned long ulBytesWrite;
 
-    m_pSerx->purgeTxRx();
+    // Decide whether to purge and (re)send, or read directly (see PreparePortForSend for why).
+    bool bSkipResend = PreparePortForSend(pszCmd, bIsRetry);
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] Sending %s\n", timestamp, pszCmd);
-    fflush(Logfile);
-#endif
+    // Only write if PreparePortForSend didn't tell us a reply is already waiting to be read.
+    if (!bSkipResend) {
+        nErr = WriteCommand(pszCmd);
+        if (nErr)
+            return nErr;
+    }
 
-    // Always (re)send the command - any stray reply left over from a previous send is caught
-    // and discarded below by responseMatchesCommand / the bytesWaitingRx drain.
-    nErr = m_pSerx->writeFile((void *)pszCmd, strlen(pszCmd), ulBytesWrite);
-    m_pSerx->flushTx();
+    // Caller doesn't want the reply text (e.g. fire-and-forget) - nothing left to do.
+    if (!pszResult)
+        return nErr;
 
-    if(nErr) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-            ltime = time(NULL);
-            timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLooop] error %d sending command : %s\n", timestamp, nErr, pszCmd);
-            fflush(Logfile);
-#endif
+    // Read the framed "<...>" response for this command.
+    nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE);
+    if (nErr) {
+        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d reading response : %s\n", nErr, szResp);
         return nErr;
     }
 
-    // read response
+    // Discard any stale reply left over from an earlier, different command before trusting this one.
+    nErr = DiscardStaleReplies(pszCmd, szResp, SERIAL_BUFFER_SIZE);
+    if (nErr)
+        return nErr;
 
-    if(pszResult) {
-        nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE);
-        if(nErr) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-            ltime = time(NULL);
-            timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] error %d reading response : %s\n", timestamp, nErr, szResp);
-            fflush(Logfile);
-#endif
+    // If this was a retry, an extra reply to the earlier attempt may still be arriving - keep the
+    // freshest one (see DrainDuplicateReplies for why prefix-matching alone can't catch this case).
+    DrainDuplicateReplies(pszCmd, szResp, SERIAL_BUFFER_SIZE, bIsRetry);
+
+    strncpy(pszResult, (const char *)szResp, nResultMaxLen);
+
+    // Check that the returned message is good - if second letter is e, this indicates an error code.
+    // This check must always run, not just under PLUGIN_DEBUG - only the log line is diagnostic.
+    if (szResp[2] == 'e') {
+        LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] Poorly formed reply: '%s'\n", szResp);
+        return PLUGIN_BAD_CMD_RESPONSE;
+    }
+
+    LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] got response : '%s'\n", szResp);
+
+    return nErr;
+}
+
+// Decide whether to purge and (re)send pszCmd, or skip both and let the caller read directly. On a
+// retry, a reply already sitting in the buffer is very likely the delayed answer to the ORIGINAL
+// send finally arriving - purging it and resending would throw away a valid reply and pay for an
+// entirely unnecessary extra round trip. On a first attempt (not a retry), anything already waiting
+// must be a leftover from an earlier, different command - never a valid answer to what we're about
+// to send - so purge and send as normal.
+bool AstroTrac::PreparePortForSend(const char *pszCmd, bool bIsRetry)
+{
+    int nBytesBeforePurge = 0, nBytesAfterPurge = 0;
+
+    m_pSerx->bytesWaitingRx(nBytesBeforePurge);
+
+    bool bSkipResend = bIsRetry && nBytesBeforePurge > 0;
+
+    if (!bSkipResend) {
+        m_pSerx->purgeTxRx();
+        m_pSerx->bytesWaitingRx(nBytesAfterPurge);
+    }
+
+    if (nBytesBeforePurge > 0 || nBytesAfterPurge > 0) {
+        if (bSkipResend)
+            LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] %d byte(s) already waiting for Cmd: %s -- reading without resending\n",
+                     nBytesBeforePurge, pszCmd);
+        else
+            LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] purgeTxRx for Cmd: %s -- bytesWaitingRx before: %d, after: %d\n",
+                     pszCmd, nBytesBeforePurge, nBytesAfterPurge);
+    }
+
+    return bSkipResend;
+}
+
+// Write pszCmd to the port. Any stray reply left over from a previous send is caught and discarded
+// by DiscardStaleReplies / DrainDuplicateReplies once the caller gets to reading.
+int AstroTrac::WriteCommand(const char *pszCmd)
+{
+    int nErr;
+    unsigned long ulBytesWrite;
+
+    LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Sending %s\n", pszCmd);
+
+    nErr = m_pSerx->writeFile((void *)pszCmd, strlen(pszCmd), ulBytesWrite);
+    m_pSerx->flushTx();
+
+    if (nErr)
+        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLooop] error %d sending command : %s\n", nErr, pszCmd);
+
+    return nErr;
+}
+
+// Keep reading until pszResp matches pszCmd (see responseMatchesCommand), or give up after
+// MAX_STALE_RESPONSE_TRIES - handles a stray reply left over from an earlier, different command
+// still being in the pipe when we start reading this one's response.
+int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen)
+{
+    int nStaleTries;
+    int nErr = PLUGIN_OK;
+
+    for (nStaleTries = 0; nStaleTries < MAX_STALE_RESPONSE_TRIES && !responseMatchesCommand(pszCmd, pszResp); nStaleTries++) {
+        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Mismatched response for Cmd: %s -- got stale reply: '%s', discarding (attempt %d/%d)\n",
+                 pszCmd, pszResp, nStaleTries + 1, MAX_STALE_RESPONSE_TRIES);
+
+        nErr = AstroTracreadResponse(pszResp, nBufLen);
+        if (nErr) {
+            LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d re-reading response while discarding stale reply for Cmd: %s\n",
+                     nErr, pszCmd);
             return nErr;
         }
-
-        // Discard any stale reply left over from an earlier command (see responseMatchesCommand)
-        // and keep reading until we find the response that actually belongs to pszCmd.
-        if (!responseMatchesCommand(pszCmd, szResp)) {
-            int nStaleTries;
-
-            for (nStaleTries = 0; nStaleTries < MAX_STALE_RESPONSE_TRIES && !responseMatchesCommand(pszCmd, szResp); nStaleTries++) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-                ltime = time(NULL);
-                timestamp = asctime(localtime(&ltime));
-                timestamp[strlen(timestamp) - 1] = 0;
-                fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] Mismatched response for Cmd: %s -- got stale reply: '%s', discarding (attempt %d/%d)\n",
-                        timestamp, pszCmd, szResp, nStaleTries + 1, MAX_STALE_RESPONSE_TRIES);
-                fflush(Logfile);
-#endif
-                nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE);
-                if (nErr) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-                    ltime = time(NULL);
-                    timestamp = asctime(localtime(&ltime));
-                    timestamp[strlen(timestamp) - 1] = 0;
-                    fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] error %d re-reading response while discarding stale reply for Cmd: %s\n",
-                            timestamp, nErr, pszCmd);
-                    fflush(Logfile);
-#endif
-                    return nErr;
-                }
-            }
-
-            if (!responseMatchesCommand(pszCmd, szResp)) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-                ltime = time(NULL);
-                timestamp = asctime(localtime(&ltime));
-                timestamp[strlen(timestamp) - 1] = 0;
-                fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] Gave up after %d stale replies, still mismatched for Cmd: %s last reply: '%s'\n",
-                        timestamp, MAX_STALE_RESPONSE_TRIES, pszCmd, szResp);
-                fflush(Logfile);
-#endif
-                return PLUGIN_BAD_CMD_RESPONSE;
-            }
-        }
-
-        // bIsRetry means AstroTracSendCommand already had to call us again for pszCmd after an
-        // earlier attempt failed - i.e. we resent it - so an extra reply to that earlier send may
-        // still be sitting in, or arriving into, the receive buffer, and prefix-matching alone
-        // cannot tell it apart from this fresh reply, since it is a reply to the very same
-        // command. Only worth checking when a resend has actually happened; a first-try success
-        // never created an extra reply to worry about.
-        //
-        // waitForBytesRx(1, EXTRA_REPLY_WAIT_MS) was tried in place of the sleep+peek below, to
-        // give a genuinely in-flight duplicate a short bounded window to land. Confirmed by direct
-        // measurement (both before and after ruling out a degraded-connection explanation) that it
-        // does not honor the requested timeout on the "nothing yet" path - it returns instantly
-        // when data is already there, but takes ~0.9s regardless of the requested value otherwise,
-        // same as readFile's MAX_TIMEOUT. Sleeping ourselves for a fixed, known duration before a
-        // non-blocking peek sidesteps relying on the SDK's timeout handling at all.
-        if (bIsRetry) {
-            unsigned char szExtra[SERIAL_BUFFER_SIZE];
-            int nExtraTries;
-
-            for (nExtraTries = 0; nExtraTries < MAX_STALE_RESPONSE_TRIES; nExtraTries++) {
-                int nBytesWaiting = 0;
-                int nErrPeek;
-
-                if (m_pSleeper)
-                    m_pSleeper->sleep(200);
-
-                nErrPeek = m_pSerx->bytesWaitingRx(nBytesWaiting);
-
-                if (nErrPeek || nBytesWaiting <= 0)
-                    break;
-
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-                ltime = time(NULL);
-                timestamp = asctime(localtime(&ltime));
-                timestamp[strlen(timestamp) - 1] = 0;
-                fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] %d more byte(s) already waiting after matching reply for Cmd: %s -- reading likely duplicate reply (attempt %d/%d)\n",
-                        timestamp, nBytesWaiting, pszCmd, nExtraTries + 1, MAX_STALE_RESPONSE_TRIES);
-                fflush(Logfile);
-#endif
-                if (AstroTracreadResponse(szExtra, SERIAL_BUFFER_SIZE) || !responseMatchesCommand(pszCmd, szExtra)) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-                    ltime = time(NULL);
-                    timestamp = asctime(localtime(&ltime));
-                    timestamp[strlen(timestamp) - 1] = 0;
-                    fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] extra reply for Cmd: %s did not match or failed to read - keeping previous reply: '%s'\n",
-                            timestamp, pszCmd, szResp);
-                    fflush(Logfile);
-#endif
-                    break;
-                }
-
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-                ltime = time(NULL);
-                timestamp = asctime(localtime(&ltime));
-                timestamp[strlen(timestamp) - 1] = 0;
-                fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] discarding stale duplicate reply: '%s', keeping newer reply: '%s' for Cmd: %s\n",
-                        timestamp, szResp, szExtra, pszCmd);
-                fflush(Logfile);
-#endif
-                memcpy(szResp, szExtra, SERIAL_BUFFER_SIZE);
-            }
-        }
-
-        strncpy(pszResult, (const char *)szResp, nResultMaxLen);
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
-        // Check that the returned message is good
-        // If second letter is e, this indicates an error code
-        if (szResp[2] == 'e') {
-            ltime = time(NULL);
-            timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] Poorly formed reply: '%s'\n", timestamp, szResp);
-            fflush(Logfile);
-            return PLUGIN_BAD_CMD_RESPONSE;
-        }
-#endif
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] [AstroTrac::AstroTracSendCommandInnerLoop] got response : '%s'\n", timestamp, szResp);
-        fflush(Logfile);
-#endif
     }
-    return nErr;
+
+    if (!responseMatchesCommand(pszCmd, pszResp)) {
+        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Gave up after %d stale replies, still mismatched for Cmd: %s last reply: '%s'\n",
+                 MAX_STALE_RESPONSE_TRIES, pszCmd, pszResp);
+        return PLUGIN_BAD_CMD_RESPONSE;
+    }
+
+    return PLUGIN_OK;
+}
+
+// If bIsRetry, an extra reply to the earlier, resent attempt may still be sitting in, or arriving
+// into, the receive buffer, and prefix-matching alone cannot tell it apart from pszResp, since it
+// is a reply to the very same command. Only worth checking when a resend has actually happened; a
+// first-try success never created an extra reply to worry about.
+//
+// waitForBytesRx(1, EXTRA_REPLY_WAIT_MS) was tried in place of the sleep+peek below, to give a
+// genuinely in-flight duplicate a short bounded window to land. Confirmed by direct measurement
+// (both before and after ruling out a degraded-connection explanation) that it does not honor the
+// requested timeout on the "nothing yet" path - it returns instantly when data is already there,
+// but takes ~0.9s regardless of the requested value otherwise, same as readFile's MAX_TIMEOUT.
+// Sleeping ourselves for a fixed, known duration before a non-blocking peek sidesteps relying on
+// the SDK's timeout handling at all.
+void AstroTrac::DrainDuplicateReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen, bool bIsRetry)
+{
+    unsigned char szExtra[SERIAL_BUFFER_SIZE];
+    int nExtraTries;
+
+    if (!bIsRetry)
+        return;
+
+    for (nExtraTries = 0; nExtraTries < MAX_STALE_RESPONSE_TRIES; nExtraTries++) {
+        int nBytesWaiting = 0;
+        int nErrPeek;
+
+        if (m_pSleeper)
+            m_pSleeper->sleep(200);
+
+        nErrPeek = m_pSerx->bytesWaitingRx(nBytesWaiting);
+
+        if (nErrPeek || nBytesWaiting <= 0)
+            break;
+
+        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] %d more byte(s) already waiting after matching reply for Cmd: %s -- reading likely duplicate reply (attempt %d/%d)\n",
+                 nBytesWaiting, pszCmd, nExtraTries + 1, MAX_STALE_RESPONSE_TRIES);
+
+        if (AstroTracreadResponse(szExtra, nBufLen) || !responseMatchesCommand(pszCmd, szExtra)) {
+            LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] extra reply for Cmd: %s did not match or failed to read - keeping previous reply: '%s'\n",
+                     pszCmd, pszResp);
+            break;
+        }
+
+        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] discarding stale duplicate reply: '%s', keeping newer reply: '%s' for Cmd: %s\n",
+                 pszResp, szExtra, pszCmd);
+
+        memcpy(pszResp, szExtra, nBufLen);
+    }
 }
 
 
@@ -460,27 +443,17 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
             clock_gettime(CLOCK_MONOTONIC, &rfEnd);
             double rfElapsed = (rfEnd.tv_sec - rfStart.tv_sec) + (rfEnd.tv_nsec - rfStart.tv_nsec) * 1e-9;
-            ltime = time(NULL);
-            timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
             if (nErr)
-                fprintf(Logfile, "[%s] [AstroTrac::readResponse] readFile error %d after %.3f seconds (had %lu byte(s) so far: '%s')\n",
-                        timestamp, nErr, rfElapsed, ulTotalBytesRead, pszRespBuffer);
+                LogDebug(2, "[AstroTrac::readResponse] readFile error %d after %.3f seconds (had %lu byte(s) so far: '%s')\n",
+                         nErr, rfElapsed, ulTotalBytesRead, pszRespBuffer);
             else
-                fprintf(Logfile, "[%s] [AstroTrac::readResponse] readFile got %lu byte(s) (wanted 1) after %.3f seconds (had %lu byte(s) so far: '%s')\n",
-                        timestamp, ulBytesRead, rfElapsed, ulTotalBytesRead, pszRespBuffer);
-            fflush(Logfile);
+                LogDebug(2, "[AstroTrac::readResponse] readFile got %lu byte(s) (wanted 1) after %.3f seconds (had %lu byte(s) so far: '%s')\n",
+                         ulBytesRead, rfElapsed, ulTotalBytesRead, pszRespBuffer);
 #endif
             if (nErr) return nErr;
         }
 
- #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 3
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] [AstroTrac::readResponse] *pszBufPtr = 0x%02X ulBytesRead %d\n", timestamp, *pszBufPtr, ulBytesRead);
-        fflush(Logfile);
-#endif
+        LogDebug(3, "[AstroTrac::readResponse] *pszBufPtr = 0x%02X ulBytesRead %d\n", *pszBufPtr, ulBytesRead);
 
         if (ulBytesRead != 1) {// timeout
             nErr = PLUGIN_BAD_CMD_RESPONSE;
@@ -495,30 +468,17 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
     if (*(pszBufPtr -1) != '>') {
     // Ensure string closed
         if (ulTotalBytesRead < nBufferLen) *pszBufPtr = 0;
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 1
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] [AstroTrac::readResponse] No closing bracket: *pszRespBuffer = %s bytes read %lu\n", timestamp, pszRespBuffer, ulTotalBytesRead);
-        fflush(Logfile);
-#endif
-        
+        LogDebug(1, "[AstroTrac::readResponse] No closing bracket: *pszRespBuffer = %s bytes read %lu\n", pszRespBuffer, ulTotalBytesRead);
+
         return PLUGIN_BAD_CMD_RESPONSE;
     }
-    
-    
+
+
     if(ulTotalBytesRead && *(pszBufPtr-1) == '>')
         *(pszBufPtr-1) = 0; //remove the > to zero terminate the string
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 3
-       ltime = time(NULL);
-       timestamp = asctime(localtime(&ltime));
-       timestamp[strlen(timestamp) - 1] = 0;
-       fprintf(Logfile, "[%s] [AstroTrac::readResponse] *pszRespBuffer = %s nErr %d\n", timestamp, pszRespBuffer, nErr);
-       fflush(Logfile);
-#endif
+    LogDebug(3, "[AstroTrac::readResponse] *pszRespBuffer = %s nErr %d\n", pszRespBuffer, nErr);
 
-    
     return nErr;
 }
 
@@ -546,14 +506,8 @@ int AstroTrac::getFirmwareVersion(std::string &sFirmware)
 #pragma mark - Mount Coordinates
 void AstroTrac::setMountMode(MountTypeInterface::Type mountType)
 {
-    #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] [AstroTrac::setMountMode] mountType = %d\n", timestamp, mountType);
-        fflush(Logfile);
-    #endif
-    
+    LogDebug(3, "[AstroTrac::setMountMode] mountType = %d\n", mountType);
+
     m_mountType = mountType;
 }
 
@@ -573,13 +527,7 @@ int AstroTrac::getHaAndDec(double &dHa, double &dDec)
     if(nErr) {
         return nErr;
     }
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] [AstroTrac::getHaAndDec] szResp = %s\n", timestamp, szResp);
-    fflush(Logfile);
-#endif
+    LogDebug(3, "[AstroTrac::getHaAndDec] szResp = %s\n", szResp);
 
     // RA Encoder measured in degrees - stored in private variable too, ignoring first 3 characters
     m_dHAEncoder = atof(szResp+3);
@@ -603,13 +551,7 @@ int AstroTrac::getHaAndDec(double &dHa, double &dDec)
         m_bIsBTP = false;
     }
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] [AstroTrac::getHaAndDec] RAEncoder %f DEencoder %f Ha %f Dec %f BTP %d\n", timestamp, m_dHAEncoder, m_dDecEncoder, dHa, dDec, m_bIsBTP);
-    fflush(Logfile);
-#endif
+    LogDebug(3, "[AstroTrac::getHaAndDec] RAEncoder %f DEencoder %f Ha %f Dec %f BTP %d\n", m_dHAEncoder, m_dDecEncoder, dHa, dDec, m_bIsBTP);
     return nErr;
 }
 void AstroTrac::EncoderValuesfromHAanDEC(double dHa, double dDec, double &HAEncoder, double &DEEncoder, bool bUseBTP)
@@ -637,15 +579,7 @@ void AstroTrac::EncoderValuesfromHAanDEC(double dHa, double dDec, double &HAEnco
         }
     }
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] AstroTrac::EncodervaluefromHAandDec (asymetrical) called %f %f %f %f bUseBTP %d IsBeyondThePole %d\n", timestamp, HAEncoder, DEEncoder,  dHa, dDec, bUseBTP, m_bIsBTP);
-    fflush(Logfile);
-#endif
-        
-
+    LogDebug(3, "AstroTrac::EncodervaluefromHAandDec (asymetrical) called %f %f %f %f bUseBTP %d IsBeyondThePole %d\n", HAEncoder, DEEncoder, dHa, dDec, bUseBTP, m_bIsBTP);
 }
 
 void AstroTrac::HAandDECfromEncoderValues(double RAEncoder, double DEEncoder, double &dHa, double &dDec)
@@ -676,13 +610,7 @@ void AstroTrac::HAandDECfromEncoderValues(double RAEncoder, double DEEncoder, do
         
     }
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] AstroTrac::HAandDecfromEncodervalue called %f %f %f %f IsBeyondThePole %d\n", timestamp, RAEncoder, DEEncoder,  dHa, dDec, m_bIsBTP);
-    fflush(Logfile);
-#endif
+    LogDebug(3, "AstroTrac::HAandDecfromEncodervalue called %f %f %f %f IsBeyondThePole %d\n", RAEncoder, DEEncoder, dHa, dDec, m_bIsBTP);
 }
 
 
@@ -736,14 +664,8 @@ int AstroTrac::setTrackingRates(const bool bTrackingOn, const bool bIgnoreRates,
     //Set flag to indicate if beyond the pole
 
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] [AstroTrac::setTrackingRates] Tracking on: %d, Ignorrates %d, dRARate %f dDECrate %f\n", timestamp, bTrackingOn, bIgnoreRates, dRaRateArcSecPerSec, dDecRateArcSecPerSec);
-        fflush(Logfile);
-#endif
-    
+    LogDebug(3, "[AstroTrac::setTrackingRates] Tracking on: %d, Ignorrates %d, dRARate %f dDECrate %f\n", bTrackingOn, bIgnoreRates, dRaRateArcSecPerSec, dDecRateArcSecPerSec);
+
     if (bTrackingOn) { // set tracking
         if (bIgnoreRates) { // No movement in DEC and siderial for RA
             RARate = m_bNorthernHemisphere ? AT_SIDEREAL_SPEED : -AT_SIDEREAL_SPEED;
@@ -784,14 +706,8 @@ int AstroTrac::setTrackingRates(const bool bTrackingOn, const bool bIgnoreRates,
     snprintf(szCmd, sizeof(szCmd), "<2ve%f>", DECRate);
     nErr = AstroTracSendCommand(szCmd, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] [AstroTrac::setTrackingRates] Tracking on: %d, Ignorrates %d, RARate %f DECrate %f\n", timestamp, bTrackingOn, bIgnoreRates, RARate, DECRate);
-    fflush(Logfile);
-#endif
-    
+    LogDebug(3, "[AstroTrac::setTrackingRates] Tracking on: %d, Ignorrates %d, RARate %f DECrate %f\n", bTrackingOn, bIgnoreRates, RARate, DECRate);
+
     return nErr;
 }
 
@@ -829,13 +745,7 @@ double AstroTrac::slewTime(double dDist, double dAccel)
         tslew = 2.0 * m_dVSlewMax/dAccel + (dDist-accelndist)/m_dVSlewMax;
     }
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] slewTime: dDist %f Time %f\n", timestamp, dDist, tslew);
-        fflush(Logfile);
-#endif
+    LogDebug(3, "slewTime: dDist %f Time %f\n", dDist, tslew);
     return tslew;
 }
         
@@ -865,13 +775,7 @@ int AstroTrac::startSlewTo(double dHa, double dDec, double dRa)
     // axis takes - no need to account for DEC's slew time here.
     tHa = slewTime(HAEncoder - m_dHAEncoder, m_dAslewRA);
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] startSlewTo: dHa: %f HAEncoder %f, m_dHAEncoder %f, tHa %f\n", timestamp, dHa, HAEncoder, m_dHAEncoder, tHa);
-        fflush(Logfile);
-#endif
+    LogDebug(3, "startSlewTo: dHa: %f HAEncoder %f, m_dHAEncoder %f, tHa %f\n", dHa, HAEncoder, m_dHAEncoder, tHa);
 
     // Formulate and send command to slew for RA axis - adding on time it takes to slew in the RA axis (remember to convert from arcsec to degrees)
     // m_dSlewOffset is initially zero, then set to the difference between actual and target RA after the slew has completed
@@ -879,25 +783,13 @@ int AstroTrac::startSlewTo(double dHa, double dDec, double dRa)
 
     nErr = AstroTracSendCommand(out, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] startSlewTo: dHa: %f command: %s response %s\n", timestamp, dHa, out, szResp);
-        fflush(Logfile);
-#endif
+    LogDebug(3, "startSlewTo: dHa: %f command: %s response %s\n", dHa, out, szResp);
 
     // Formulate and send command to slew for DEC axis
     snprintf(out, sizeof(out), "<2p%f>", DEEncoder);
     nErr = AstroTracSendCommand(out, szResp, SERIAL_BUFFER_SIZE); if (nErr) return nErr;
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] startSlewTo: dDec: %f command: %s response %s\n", timestamp, dDec, out, szResp);
-        fflush(Logfile);
-#endif
+    LogDebug(3, "startSlewTo: dDec: %f command: %s response %s\n", dDec, out, szResp);
 
     return nErr;
 }
@@ -932,14 +824,8 @@ int AstroTrac::endSlewTo(){
     // Only do this if the difference is less than 100" - otherwise likely to be some sort of error
     if (fabs(dHAEncoder - m_dHAEncoder) * 3600.0 < 100) m_dSlewOffset += dHAEncoder - m_dHAEncoder;
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(Logfile, "[%s] endSlewTo: m_dHAEncoder %f Target Encoder %f Offset %f\"\n", timestamp, m_dHAEncoder, dHAEncoder, m_dSlewOffset*3600);
-        fflush(Logfile);
-#endif
-    
+    LogDebug(3, "endSlewTo: m_dHAEncoder %f Target Encoder %f Offset %f\"\n", m_dHAEncoder, dHAEncoder, m_dSlewOffset*3600);
+
     return nErr;
     
 }
@@ -954,29 +840,17 @@ int AstroTrac::isSlewToComplete(bool &bComplete)
     // Is RA drive finished slew?
     nErr = AstroTracSendCommand("<1t?>", szResp, SERIAL_BUFFER_SIZE);    if(nErr) return nErr;
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] [AstroTrac::isSlewToComplete] RA szResp : %s\n", timestamp, szResp);
-    fflush(Logfile);
-#endif
-    
+    LogDebug(3, "[AstroTrac::isSlewToComplete] RA szResp : %s\n", szResp);
+
     // Third character tells whether is still slewing - 1 yes, 0 no
     if (szResp[3] == '1') return nErr;
-    
+
     // RA drive has finished slew - try DEC drive
     nErr = AstroTracSendCommand("<2t?>", szResp, SERIAL_BUFFER_SIZE);    if(nErr) return nErr;
     // Third character tells whether is still slewing - 1 yes, 0 no
-    
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] [AstroTrac::isSlewToComplete] DEC szResp : %s\n", timestamp, szResp);
-    fflush(Logfile);
-#endif
-    
+
+    LogDebug(3, "[AstroTrac::isSlewToComplete] DEC szResp : %s\n", szResp);
+
     if (szResp[3] == '1') return nErr;
     
     // Both drives indicate slew has finished so flag bComplete to be true.
@@ -1009,14 +883,8 @@ int AstroTrac::startOpenLoopMove(const MountDriverInterface::MoveDir Dir, unsign
     char szCmd[SERIAL_BUFFER_SIZE];
     char szResp[SERIAL_BUFFER_SIZE];
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] [AstroTrac::startOpenSlew] setting to Dir %d\n", timestamp, Dir);
-    fprintf(Logfile, "[%s] [AstroTrac::startOpenSlew] Setting rate to %d\n", timestamp, nRate);
-    fflush(Logfile);
-#endif
+    LogDebug(0, "[AstroTrac::startOpenSlew] setting to Dir %d\n", Dir);
+    LogDebug(0, "[AstroTrac::startOpenSlew] Setting rate to %d\n", nRate);
 
     // select rate
     m_nOpenLoopDir = Dir;
@@ -1049,10 +917,9 @@ int AstroTrac::startOpenLoopMove(const MountDriverInterface::MoveDir Dir, unsign
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
     clock_gettime(CLOCK_MONOTONIC, &cmdEnd);
     double cmdElapsed = (cmdEnd.tv_sec - cmdStart.tv_sec) + (cmdEnd.tv_nsec - cmdStart.tv_nsec) * 1e-9;
-    fprintf(Logfile, "[%s] [AstroTrac::startOpenLoopMove] AstroTracSendCommand took %.3f seconds, nErr = %d\n", timestamp, cmdElapsed, nErr);
-    fflush(Logfile);
+    LogDebug(0, "[AstroTrac::startOpenLoopMove] AstroTracSendCommand took %.3f seconds, nErr = %d\n", cmdElapsed, nErr);
 #endif
-    
+
     // Start timer to measure open loop slew duration for the appropriate axis
     if (Dir == MountDriverInterface::MD_NORTH || Dir == MountDriverInterface::MD_SOUTH) {
         m_bOpenLoopDEC = true;
@@ -1070,20 +937,18 @@ int AstroTrac::stopOpenLoopMove()
     int nErr = PLUGIN_OK;
 
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    if (m_bOpenLoopRA) {
-        double elapsedRA = (now.tv_sec - m_OpenLoopStartTimeRA.tv_sec) + (now.tv_nsec - m_OpenLoopStartTimeRA.tv_nsec) * 1e-9;
-        fprintf(Logfile, "[%s] [AstroTrac::stopOpenLoopMove] RA (East/West) duration %.3f seconds\n", timestamp, elapsedRA);
+    {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (m_bOpenLoopRA) {
+            double elapsedRA = (now.tv_sec - m_OpenLoopStartTimeRA.tv_sec) + (now.tv_nsec - m_OpenLoopStartTimeRA.tv_nsec) * 1e-9;
+            LogDebug(0, "[AstroTrac::stopOpenLoopMove] RA (East/West) duration %.3f seconds\n", elapsedRA);
+        }
+        if (m_bOpenLoopDEC) {
+            double elapsedDEC = (now.tv_sec - m_OpenLoopStartTimeDEC.tv_sec) + (now.tv_nsec - m_OpenLoopStartTimeDEC.tv_nsec) * 1e-9;
+            LogDebug(0, "[AstroTrac::stopOpenLoopMove] DEC (North/South) duration %.3f seconds\n", elapsedDEC);
+        }
     }
-    if (m_bOpenLoopDEC) {
-        double elapsedDEC = (now.tv_sec - m_OpenLoopStartTimeDEC.tv_sec) + (now.tv_nsec - m_OpenLoopStartTimeDEC.tv_nsec) * 1e-9;
-        fprintf(Logfile, "[%s] [AstroTrac::stopOpenLoopMove] DEC (North/South) duration %.3f seconds\n", timestamp, elapsedDEC);
-    }
-    fflush(Logfile);
 #endif
     m_bOpenLoopRA = false;
     m_bOpenLoopDEC = false;
@@ -1096,8 +961,7 @@ int AstroTrac::stopOpenLoopMove()
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
     clock_gettime(CLOCK_MONOTONIC, &cmdEnd);
     double cmdElapsed = (cmdEnd.tv_sec - cmdStart.tv_sec) + (cmdEnd.tv_nsec - cmdStart.tv_nsec) * 1e-9;
-    fprintf(Logfile, "[%s] [AstroTrac::stopOpenLoopMove] setTrackingRates took %.3f seconds, nErr = %d\n", timestamp, cmdElapsed, nErr);
-    fflush(Logfile);
+    LogDebug(0, "[AstroTrac::stopOpenLoopMove] setTrackingRates took %.3f seconds, nErr = %d\n", cmdElapsed, nErr);
 #endif
 
     return nErr;
@@ -1121,14 +985,8 @@ int AstroTrac::gotoPark(double dHa, double dDec)
     
     // Flag the parking is in progress
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 2
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] [AstroTrac::gotoPark] Called!\n", timestamp);
-    fflush(Logfile);
-#endif
-    
+    LogDebug(3, "[AstroTrac::gotoPark] Called!\n");
+
     m_bParkingInProgress = true;
     return nErr;
 }
