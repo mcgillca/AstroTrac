@@ -46,7 +46,17 @@
 // margin so they only trip if this driver's check somehow fails to (e.g. TheSkyX hangs or the connection drops).
 #define FIRMWARE_SAFETY_MARGIN_DEG 3.0
 
-// #define AstroTrac_X2_DEBUG  0  // Define this to have log files. 1 for just bad things, 2 for general stuff.
+// Comment out AstroTrac_X2_DEBUG entirely for a production build - LogFile/LogDebug then compile away to
+// nothing (see LogDebug in x2mount.cpp). When defined, controls how much gets logged. Levels mirror the
+// PLUGIN_DEBUG scheme in AstroTrac.h so the two log files read consistently (levels 0 and 2 have no sites
+// here - the open-loop-move timing and send-command machinery they cover live in AstroTrac.cpp):
+//   0: (unused here) - open-loop-move timing lives in AstroTrac.cpp under PLUGIN_DEBUG.
+//   1: Open-loop-move tracing (relevant to guiding) plus notable/unexpected events worth a heads-up even
+//      outside active debugging - command failures (open-loop move, slew, unpark) and the safety stops
+//      that halt tracking (below horizon / past meridian).
+//   2: (unused here) - the send-command machinery it would cover lives in AstroTrac.cpp.
+//   3: Everything else - driver/connection lifecycle, coordinate/math tracing, slew and tracking lifecycle.
+// #define AstroTrac_X2_DEBUG  3  // Uncomment to enable logging (levels 0-3, see above)
 
 #if defined(SB_WIN_BUILD)
 #define DEF_PORT_NAME					"COM1"
@@ -243,6 +253,11 @@ private:
     // needing a reconnect.
     void sendSafetyLimitsToFirmware();
 
+    // Write a single debug log line if AstroTrac_X2_DEBUG is defined and at least nLevel, otherwise a
+    // no-op. Centralizes the timestamp/fprintf/fflush boilerplate that used to be repeated at every log
+    // site. Mirrors AstroTrac::LogDebug(); const so it can be called from const methods like isCompleteSlewTo().
+    void LogDebug(int nLevel, const char *pszFormat, ...) const;
+
     int m_iNTrackingOff = 0;
     
     int m_iGuideRateIndex = 0; //Default - 0.1x siderial
@@ -252,8 +267,6 @@ private:
     
 #ifdef AstroTrac_X2_DEBUG
     std::string m_sLogfilePath;
-    char *timestamp;
-    time_t ltime;
 	FILE *LogFile;	  // LogFile
 #endif
 	

@@ -61,15 +61,7 @@ X2Mount::X2Mount(const char* pszDriverSelection,
          mAstroTrac.setMountMode(MountTypeInterface::Asymmetrical_Equatorial);
     }
     
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] X2Mount constructor called pszDriverSelection: %s %d\n", timestamp, pszDriverSelection, mAstroTrac.mountType());
-        fflush(LogFile);
-    }
-#endif
+    LogDebug(3, "X2Mount constructor called pszDriverSelection: %s %d\n", pszDriverSelection, mAstroTrac.mountType());
 }
 
 X2Mount::~X2Mount()
@@ -101,23 +93,39 @@ X2Mount::~X2Mount()
 		fclose(LogFile);
 	}
 #endif
-	
+
+}
+
+// Write a single debug log line if AstroTrac_X2_DEBUG is defined and at least nLevel, otherwise a no-op.
+// Centralizes the timestamp/fprintf/fflush boilerplate that used to be repeated at every log site.
+void X2Mount::LogDebug(int nLevel, const char *pszFormat, ...) const
+{
+#ifdef AstroTrac_X2_DEBUG
+    if (!LogFile || nLevel > AstroTrac_X2_DEBUG)
+        return;
+
+    va_list args;
+
+    time_t ltime = time(NULL);
+    char *timestamp = asctime(localtime(&ltime));
+    timestamp[strlen(timestamp) - 1] = 0;
+    fprintf(LogFile, "[%s] ", timestamp);
+
+    va_start(args, pszFormat);
+    vfprintf(LogFile, pszFormat, args);
+    va_end(args);
+
+    fflush(LogFile);
+#endif
 }
 
 int X2Mount::queryAbstraction(const char* pszName, void** ppVal)
 {
 	*ppVal = NULL;
-    
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] queryAbstrcttion Called: pszName %s\n", timestamp, pszName);
-        fflush(LogFile);
-    }
-#endif
-    
+
+    LogDebug(3, "queryAbstrcttion Called: pszName %s\n", pszName);
+
+
 	if (!strcmp(pszName, SyncMountInterface_Name))
 	    *ppVal = dynamic_cast<SyncMountInterface*>(this);
 	if (!strcmp(pszName, SlewToInterface_Name))
@@ -162,27 +170,11 @@ int X2Mount::startOpenLoopMove(const MountDriverInterface::MoveDir& Dir, const i
     X2MutexLocker ml(GetMutex());
 
 	m_CurrentRateIndex = nRateIndex;
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-	if (LogFile) {
-		time_t ltime = time(NULL);
-		char *timestamp = asctime(localtime(&ltime));
-		timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] startOpenLoopMove called Dir: %d , Rate: %d\n", timestamp, Dir, nRateIndex);
-        fflush(LogFile);
-	}
-#endif
+    LogDebug(1, "startOpenLoopMove called Dir: %d , Rate: %d\n", Dir, nRateIndex);
 
     nErr = mAstroTrac.startOpenLoopMove(Dir, nRateIndex);
     if(nErr) {
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] startOpenLoopMove ERROR %d\n", timestamp, nErr);
-            fflush(LogFile);
-        }
-#endif
+        LogDebug(1, "startOpenLoopMove ERROR %d\n", nErr);
         m_pLogger->out("startOpenLoopMove ERROR");
         return ERR_CMDFAILED;
     }
@@ -197,27 +189,11 @@ int X2Mount::endOpenLoopMove(void)
 
     X2MutexLocker ml(GetMutex());
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-	if (LogFile){
-		time_t ltime = time(NULL);
-		char *timestamp = asctime(localtime(&ltime));
-		timestamp[strlen(timestamp) - 1] = 0;
-		fprintf(LogFile, "[%s] endOpenLoopMove Called\n", timestamp);
-        fflush(LogFile);
-	}
-#endif
+    LogDebug(1, "endOpenLoopMove Called\n");
 
     nErr = mAstroTrac.stopOpenLoopMove();
     if(nErr) {
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] endOpenLoopMove ERROR %d\n", timestamp, nErr);
-            fflush(LogFile);
-        }
-#endif
+        LogDebug(1, "endOpenLoopMove ERROR %d\n", nErr);
         m_pLogger->out("endOpenLoopMove ERROR");
         return ERR_CMDFAILED;
     }
@@ -239,15 +215,7 @@ int X2Mount::rateNameFromIndexOpenLoopMove(const int& nZeroBasedIndex, char* psz
     
     nErr = mAstroTrac.getRateName(nZeroBasedIndex, sTmp);
     if(nErr) {
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] rateNameFromIndexOpenLoopMove ERROR %d\n", timestamp, nErr);
-            fflush(LogFile);
-        }
-#endif
+        LogDebug(1, "rateNameFromIndexOpenLoopMove ERROR %d\n", nErr);
         m_pLogger->out("rateNameFromIndexOpenLoopMove ERROR");
         return ERR_CMDFAILED;
     }
@@ -341,16 +309,8 @@ int X2Mount::establishLink(void)
     portNameOnToCharPtr(szPort,DRIVER_MAX_STRING);
 
 	nErr =  mAstroTrac.Connect(szPort);
-    
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] establishLink Called. nErr %d\n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
+
+    LogDebug(3, "establishLink Called. nErr %d\n", nErr);
     if(nErr) {
         m_bLinked = false;
     }
@@ -464,16 +424,8 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
 
 
     
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] raDec Called. ha : %f , Ra : %f Dec : %f BTP %d\n", timestamp, Ha, ra, dec, mAstroTrac.GetIsBeyondThePole());
-        fprintf(LogFile, "[%s] nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
+    LogDebug(3, "raDec Called. ha : %f , Ra : %f Dec : %f BTP %d\n", Ha, ra, dec, mAstroTrac.GetIsBeyondThePole());
+    LogDebug(3, "nErr = %d \n", nErr);
 
 
     // Now check if have exceeded the tracking limits
@@ -490,16 +442,8 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
       m_iNTrackingOff++;
       if (m_iNTrackingOff >= N_TRACK_STOP) {
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-	if (LogFile) {
-	  ltime = time(NULL);
-	  timestamp = asctime(localtime(&ltime));
-	  timestamp[strlen(timestamp) - 1] = 0;
-	  fprintf(LogFile, "[%s] raDec Called. Below horizon limit. dAlt %f, limit %f, ha %f dec %f m_INTrackingOff %d\n", timestamp,
-		  dAlt,m_dHorizonLimitDeg,Ha, dec, m_iNTrackingOff);
-	  fflush(LogFile);
-	}
-#endif
+	LogDebug(1, "raDec Called. Below horizon limit. dAlt %f, limit %f, ha %f dec %f m_INTrackingOff %d\n",
+		 dAlt, m_dHorizonLimitDeg, Ha, dec, m_iNTrackingOff);
 	nErr = setTrackingRates(false, true, 0.0, 0.0); if (nErr) return ERR_CMDFAILED; // Stop tracking since now too low and setting
       }
     }
@@ -513,16 +457,8 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
       m_iNTrackingOff++;
       if (m_iNTrackingOff >= N_TRACK_STOP) {
         nErr = setTrackingRates(false, true, 0.0, 0.0);    // Stop tracking since these have been exceeded
-        
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 0
-	if (LogFile) {
-	  ltime = time(NULL);
-	  timestamp = asctime(localtime(&ltime));
-	  timestamp[strlen(timestamp) - 1] = 0;
-	  fprintf(LogFile, "[%s] raDec Called. Too far past meridian. Ha %f m_iNTrackingOff %d\n", timestamp, Ha, m_iNTrackingOff);
-	  fflush(LogFile);
-	}
-#endif
+
+	LogDebug(1, "raDec Called. Too far past meridian. Ha %f m_iNTrackingOff %d\n", Ha, m_iNTrackingOff);
         if (nErr) return ERR_CMDFAILED;
       }
     }
@@ -530,17 +466,9 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
     else {
       m_iNTrackingOff = 0;
     }
-    
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        ltime = time(NULL);
-        timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] raDec Called. dAz %f, dAlt %f\n", timestamp, dAz, dAlt);
-        fflush(LogFile);
-    }
-#endif
-    
+
+    LogDebug(3, "raDec Called. dAz %f, dAlt %f\n", dAz, dAlt);
+
 	return nErr;
 }
 
@@ -552,29 +480,13 @@ int X2Mount::abort()
 
     X2MutexLocker ml(GetMutex());
 
-#if defined AstroTrac_X2_DEBUG & AstroTrac_X2_DEBUG >= 2
-	if (LogFile) {
-		time_t ltime = time(NULL);
-		char *timestamp = asctime(localtime(&ltime));
-		timestamp[strlen(timestamp) - 1] = 0;
-		fprintf(LogFile, "[%s] abort Called\n", timestamp);
-        fflush(LogFile);
-	}
-#endif
+    LogDebug(3, "abort Called\n");
 
     nErr = mAstroTrac.Abort();
     if(nErr)
         nErr = ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] Abort nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
+    LogDebug(3, "Abort nErr = %d \n", nErr);
 
     return nErr;
 }
@@ -591,30 +503,14 @@ int X2Mount::startSlewTo(const double& dRa, const double& dDec)
     // Start tracking since mount remembers tracking state before slewing
     siderealTrackingOn();
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-	if (LogFile) {
-		time_t ltime = time(NULL);
-		char *timestamp = asctime(localtime(&ltime));
-		timestamp[strlen(timestamp) - 1] = 0;
-		fprintf(LogFile, "[%s] startSlewTo Called %f %f\n", timestamp, dRa, dDec);
-        fflush(LogFile);
-	}
-#endif
-    
+    LogDebug(3, "startSlewTo Called %f %f\n", dRa, dDec);
+
     // Calulate HA using the Sky interface:
     dHA = m_pTheSkyXForMounts->hourAngle(dRa);
-    
+
     nErr = mAstroTrac.startSlewTo(dHA, dDec, dRa);
     if(nErr) {
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] startSlewTo nErr = %d \n", timestamp, nErr);
-            fflush(LogFile);
-        }
-#endif
+        LogDebug(1, "startSlewTo nErr = %d \n", nErr);
         m_pLogger->out("startSlewTo ERROR");
         return ERR_CMDFAILED;
     }
@@ -636,15 +532,7 @@ int X2Mount::isCompleteSlewTo(bool& bComplete) const
     if(nErr)
         return ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] isCompleteSlewTo %d nErr = %d i\n", timestamp, bComplete, nErr);
-        fflush(LogFile);
-    }
-#endif
+    LogDebug(3, "isCompleteSlewTo %d nErr = %d i\n", bComplete, nErr);
 
 	return nErr;
 }
@@ -652,17 +540,9 @@ int X2Mount::isCompleteSlewTo(bool& bComplete) const
 int X2Mount::endSlewTo(void)
 {
     int nErr;
-    
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] endSlewTo Called\n", timestamp);
-        fflush(LogFile);
-    }
-#endif
-    
+
+    LogDebug(3, "endSlewTo Called\n");
+
     nErr = mAstroTrac.endSlewTo();
     
     if(nErr) {
@@ -686,29 +566,13 @@ int X2Mount::syncMount(const double& ra, const double& dec)
     // Convert ra to Ha
     Ha = m_pTheSkyXForMounts->hourAngle(ra);
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] syncMount Called : %f\t%f\n", timestamp, ra, dec);
-        fflush(LogFile);
-    }
-#endif
-    
+    LogDebug(3, "syncMount Called : %f\t%f\n", ra, dec);
+
     nErr = mAstroTrac.syncTo(Ha, dec);
     if(nErr)
         nErr = ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] syncMount nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
+    LogDebug(3, "syncMount nErr = %d \n", nErr);
 
     return nErr;
 }
@@ -729,16 +593,8 @@ int X2Mount::setTrackingRates(const bool& bTrackingOn, const bool& bIgnoreRates,
     X2MutexLocker ml(GetMutex());
 
     nErr = mAstroTrac.setTrackingRates(bTrackingOn, bIgnoreRates, dRaRateArcSecPerSec, dDecRateArcSecPerSec);
-    
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] setTrackingRates Called. Tracking On: %s , Ra rate : %f , Dec rate: %f nerr %d\n", timestamp, bTrackingOn?"true":"false", dRaRateArcSecPerSec, dDecRateArcSecPerSec, nErr);
-        fflush(LogFile);
-    }
-#endif
+
+    LogDebug(3, "setTrackingRates Called. Tracking On: %s , Ra rate : %f , Dec rate: %f nerr %d\n", bTrackingOn?"true":"false", dRaRateArcSecPerSec, dDecRateArcSecPerSec, nErr);
     if(nErr)
         return ERR_CMDFAILED;
     
@@ -756,16 +612,8 @@ int X2Mount::trackingRates(bool& bTrackingOn, double& dRaRateArcSecPerSec, doubl
         return ERR_NOLINK;
 
     nErr = mAstroTrac.getTrackRates(bTrackingOn, dRaRateArcSecPerSec, dDecRateArcSecPerSec); if (nErr) return ERR_CMDFAILED;
-    
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] trackingRates Called. Tracking On: %s , Ra rate : %f , Dec rate: %f nerr %d\n", timestamp, bTrackingOn?"true":"false", dRaRateArcSecPerSec, dDecRateArcSecPerSec, nErr);
-        fflush(LogFile);
-    }
-#endif
+
+    LogDebug(3, "trackingRates Called. Tracking On: %s , Ra rate : %f , Dec rate: %f nerr %d\n", bTrackingOn?"true":"false", dRaRateArcSecPerSec, dDecRateArcSecPerSec, nErr);
 
 	return nErr;
 }
@@ -778,29 +626,13 @@ int X2Mount::siderealTrackingOn()
 
     X2MutexLocker ml(GetMutex());
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] siderealTrackingOn Called \n", timestamp);
-        fflush(LogFile);
-    }
-#endif
+    LogDebug(3, "siderealTrackingOn Called \n");
 
     nErr = setTrackingRates( true, true, 0.0, 0.0);
     if(nErr)
         return ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] siderealTrackingOn nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
+    LogDebug(3, "siderealTrackingOn nErr = %d \n", nErr);
 
     return nErr;
 }
@@ -813,29 +645,13 @@ int X2Mount::trackingOff()
 
     X2MutexLocker ml(GetMutex());
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] trackingOff Called \n", timestamp);
-        fflush(LogFile);
-    }
-#endif
-    
+    LogDebug(3, "trackingOff Called \n");
+
     nErr = setTrackingRates( false, true, 0.0, 0.0);
     if(nErr)
         nErr = ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] trackingOff nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
+    LogDebug(3, "trackingOff nErr = %d \n", nErr);
 
     return nErr;
 }
@@ -869,15 +685,7 @@ int X2Mount::startPark(const double& dAz, const double& dAlt)
     if(nErr)
         nErr = ERR_CMDFAILED;
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-    if (LogFile) {
-        time_t ltime = time(NULL);
-        char *timestamp = asctime(localtime(&ltime));
-        timestamp[strlen(timestamp) - 1] = 0;
-        fprintf(LogFile, "[%s] startPark  mAstroTrac.gotoPark nErr = %d \n", timestamp, nErr);
-        fflush(LogFile);
-    }
-#endif
+    LogDebug(3, "startPark  mAstroTrac.gotoPark nErr = %d \n", nErr);
 
 	return nErr;
 }
@@ -914,17 +722,7 @@ int X2Mount::startUnpark(void)
 
     nErr = mAstroTrac.unPark();
     if(nErr) {
-        
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] startUnpark : mAstroTrac.unPark() failed !\n", timestamp);
-            fflush(LogFile);
-        }
-#endif
-        
+        LogDebug(1, "startUnpark : mAstroTrac.unPark() failed !\n");
         nErr = ERR_CMDFAILED;
     }
 
@@ -952,15 +750,7 @@ int		X2Mount::endUnpark(void)
 
 bool X2Mount::knowsBeyondThePole()
 {
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-        if (LogFile) {
-            time_t ltime = time(NULL);
-            char *timestamp = asctime(localtime(&ltime));
-            timestamp[strlen(timestamp) - 1] = 0;
-            fprintf(LogFile, "[%s] knowBeyondThePole called\n", timestamp);
-            fflush(LogFile);
-        }
-#endif
+    LogDebug(3, "knowBeyondThePole called\n");
     return true;
 }
 
@@ -974,16 +764,6 @@ int X2Mount::beyondThePole(bool& bYes) {
 
 
 double X2Mount::flipHourAngle() {
-    
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
-	if (LogFile) {
-		time_t ltime = time(NULL);
-		char *timestamp = asctime(localtime(&ltime));
-		timestamp[strlen(timestamp) - 1] = 0;
-		// fprintf(LogFile, "[%s] flipHourAngle called\n", timestamp);
-        fflush(LogFile);
-	}
-#endif
 
 	return 0.0;
 }
