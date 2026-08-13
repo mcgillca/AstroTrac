@@ -41,7 +41,7 @@
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle, byte-level
 //      read trace.
 #define PLUGIN_DEBUG 0
-#define DRIVER_VERSION 1.6
+#define DRIVER_VERSION 1.7
 
 // Changelog:
 // Version  1.0: Initial release
@@ -51,9 +51,15 @@
 //          1.4: Fixed bug in pulseguiding - selected rated was index+1.
 //          1.5: Replaced sprintf with snprintf and added code to track timing of open loop slews and to send commands to Astrotrac (about 0.015s per axis). Also defined number of slew rates dynamically by reading from size of m_dvSlewRates.
 //          1.6: Fixed command/response desync: always resend on retry instead of waiting for two failed reads, validate replies against the command sent, and drain stale/duplicate replies so command/response pairs stay in sync.
+//          1.7: Added horizon limit setting, and send both it and the meridian/latitude settings to the mount
+//               firmware (>= 2.35) as a last-resort backstop, padded with FIRMWARE_SAFETY_MARGIN_DEG so this
+//               driver's own meridian/horizon checks in raDec() still take precedence.
 
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
+
+// Firmware version (as reported by 'zv?') at which the 'lt'/'lh'/'la' safety-limit commands were introduced.
+#define FIRMWARE_MIN_VER_SAFETY_LIMITS 2.35
 
 enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BAD_CMD_RESPONSE, COMMAND_FAILED, PLUGIN_ERROR};
 
@@ -113,6 +119,12 @@ public:
     bool GetIsBeyondThePole() const { return m_bIsBTP; }
 
     int Abort();
+
+    // Sends the firmware-level meridian/horizon safety backstop ('lt'/'lh'/'la'). No-ops (returns
+    // PLUGIN_OK without sending anything) if the connected firmware predates FIRMWARE_MIN_VER_SAFETY_LIMITS -
+    // older firmware doesn't understand these commands. dMeridianLimitDeg/dHorizonLimitDeg are sent as-is;
+    // any margin over this driver's own limits is the caller's responsibility (see x2mount.h).
+    int sendSafetyLimits(double dMeridianLimitDeg, double dHorizonLimitDeg, double dLatitudeDeg);
 
 private:
 

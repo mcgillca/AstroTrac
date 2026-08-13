@@ -34,12 +34,19 @@
 #define CHILD_KEY_PORT_NAME "PortName"
 #define CHILD_KEY_GUIDERATE "GuideRate"
 #define CHILD_KEY_HOURS_PAST_MERIDIAN "HPMeridian"
+#define CHILD_KEY_HORIZON_LIMIT "HorizonLimit"
 
 #define MAX_PORT_NAME_SIZE 120
 //#define TRAC_PAST_MERIDIAN 1.0   // Allow mount to track this much beyond the Meridian - set to 1 hour for now
 #define N_TRACK_STOP       4     // Require 4 successive location co-ordinates beyond limits (meridian or horizon) to stop tracking
 
-//#define AstroTrac_X2_DEBUG  2  // Define this to have log files. 1 for just bad things, 2 for general stuff.
+// Firmware-level safety backstop ('lt'/'lh'/'la' commands - see AstroTrac::sendSafetyLimits(), which also
+// defines the minimum firmware version that understands them). This driver's own meridian/horizon checks in
+// raDec() take precedence and should stop tracking first; the firmware limits are sent with this much extra
+// margin so they only trip if this driver's check somehow fails to (e.g. TheSkyX hangs or the connection drops).
+#define FIRMWARE_SAFETY_MARGIN_DEG 3.0
+
+// #define AstroTrac_X2_DEBUG  0  // Define this to have log files. 1 for just bad things, 2 for general stuff.
 
 #if defined(SB_WIN_BUILD)
 #define DEF_PORT_NAME					"COM1"
@@ -230,11 +237,18 @@ private:
 
     void portNameOnToCharPtr(char* pszPort, const unsigned int& nMaxSize) const;
 
+    // Sends this driver's meridian/horizon settings (padded with FIRMWARE_SAFETY_MARGIN_DEG) plus the
+    // current site latitude to the mount firmware, if it's new enough to support 'lt'/'lh'/'la'. Called
+    // after establishLink() and whenever the settings dialog is accepted, so changes take effect without
+    // needing a reconnect.
+    void sendSafetyLimitsToFirmware();
+
     int m_iNTrackingOff = 0;
     
     int m_iGuideRateIndex = 0; //Default - 0.1x siderial
 
     double m_dHoursPastMeridian = 0.0;
+    double m_dHorizonLimitDeg = 0.0;
     
 #ifdef AstroTrac_X2_DEBUG
     std::string m_sLogfilePath;

@@ -503,6 +503,38 @@ int AstroTrac::getFirmwareVersion(std::string &sFirmware)
     return nErr;
 }
 
+int AstroTrac::sendSafetyLimits(double dMeridianLimitDeg, double dHorizonLimitDeg, double dLatitudeDeg)
+{
+    int nErr = PLUGIN_OK;
+    char szCmd[SERIAL_BUFFER_SIZE];
+    char szResp[SERIAL_BUFFER_SIZE];
+    std::string sFirmware;
+
+    if(!m_bIsConnected)
+        return NOT_CONNECTED;
+
+    nErr = getFirmwareVersion(sFirmware);
+    if(nErr) return nErr;
+
+    if (atof(sFirmware.c_str()) < FIRMWARE_MIN_VER_SAFETY_LIMITS) {
+        LogDebug(1, "[AstroTrac::sendSafetyLimits] Firmware %s predates %.2f - firmware safety limits not supported, skipping\n", sFirmware.c_str(), FIRMWARE_MIN_VER_SAFETY_LIMITS);
+        return PLUGIN_OK;
+    }
+
+    // Latitude first - the firmware's horizon/altitude math depends on it being set before 'lh' is meaningful.
+    snprintf(szCmd, sizeof(szCmd), "<1la%f>", dLatitudeDeg);
+    nErr = AstroTracSendCommand(szCmd, szResp, SERIAL_BUFFER_SIZE); if (nErr) return COMMAND_FAILED;
+
+    snprintf(szCmd, sizeof(szCmd), "<1lt%f>", dMeridianLimitDeg);
+    nErr = AstroTracSendCommand(szCmd, szResp, SERIAL_BUFFER_SIZE); if (nErr) return COMMAND_FAILED;
+
+    snprintf(szCmd, sizeof(szCmd), "<1lh%f>", dHorizonLimitDeg);
+    nErr = AstroTracSendCommand(szCmd, szResp, SERIAL_BUFFER_SIZE); if (nErr) return COMMAND_FAILED;
+
+    LogDebug(3, "[AstroTrac::sendSafetyLimits] Sent la=%f lt=%f lh=%f\n", dLatitudeDeg, dMeridianLimitDeg, dHorizonLimitDeg);
+    return nErr;
+}
+
 #pragma mark - Mount Coordinates
 void AstroTrac::setMountMode(MountTypeInterface::Type mountType)
 {

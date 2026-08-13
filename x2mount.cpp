@@ -49,6 +49,7 @@ X2Mount::X2Mount(const char* pszDriverSelection,
 	{
         m_iGuideRateIndex = m_pIniUtil->readInt(PARENT_KEY, CHILD_KEY_GUIDERATE, 0);
         m_dHoursPastMeridian = m_pIniUtil->readDouble(PARENT_KEY, CHILD_KEY_HOURS_PAST_MERIDIAN, 1.0);
+        m_dHorizonLimitDeg = m_pIniUtil->readDouble(PARENT_KEY, CHILD_KEY_HORIZON_LIMIT, 0.0);  // 0deg matches this driver's existing hardcoded dAlt<0.0 cutoff
 	}
     
     
@@ -290,21 +291,38 @@ int X2Mount::execModalSettingsDialog(void)
     }
     dx->setCurrentIndex("comboBox", m_iGuideRateIndex);
     
-    // Now display the hours past the meridian.
+    // Now display the hours past the meridian, and the horizon limit.
     dx->setPropertyDouble("doubleSpinBox", "value", m_dHoursPastMeridian);
+    dx->setPropertyDouble("doubleSpinBox_2", "value", m_dHorizonLimitDeg);
 
 	//Display the user interface
 	if ((nErr = ui->exec(bPressedOK)))
 		return nErr;
-	
+
 	//Retreive values from the user interface
 	if (bPressedOK) {
         m_iGuideRateIndex = dx->currentIndex("comboBox");
         dx->propertyDouble("doubleSpinBox", "value", m_dHoursPastMeridian);
+        dx->propertyDouble("doubleSpinBox_2", "value", m_dHorizonLimitDeg);
         m_pIniUtil->writeInt(PARENT_KEY, CHILD_KEY_GUIDERATE, m_iGuideRateIndex);
         m_pIniUtil->writeDouble(PARENT_KEY, CHILD_KEY_HOURS_PAST_MERIDIAN, m_dHoursPastMeridian);
+        m_pIniUtil->writeDouble(PARENT_KEY, CHILD_KEY_HORIZON_LIMIT, m_dHorizonLimitDeg);
+        if (m_bLinked) sendSafetyLimitsToFirmware();  //Apply immediately rather than waiting for a reconnect
 	}
 	return nErr;
+}
+
+// See x2mount.h declaration for the overall design: this driver's own raDec() meridian/horizon checks take
+// precedence, firmware limits are last-resort only and padded with FIRMWARE_SAFETY_MARGIN_DEG so they trip
+// after this driver's own check would have. No-ops harmlessly (via AstroTrac::sendSafetyLimits()) on
+// firmware older than FIRMWARE_MIN_VER_SAFETY_LIMITS.
+void X2Mount::sendSafetyLimitsToFirmware()
+{
+    double dMeridianLimitDeg = m_dHoursPastMeridian * 15.0 + FIRMWARE_SAFETY_MARGIN_DEG;
+    double dHorizonLimitDeg = m_dHorizonLimitDeg - FIRMWARE_SAFETY_MARGIN_DEG;
+    double dLatitudeDeg = m_pTheSkyXForMounts->latitude();
+
+    mAstroTrac.sendSafetyLimits(dMeridianLimitDeg, dHorizonLimitDeg, dLatitudeDeg);
 }
 
 void X2Mount::uiEvent(X2GUIExchangeInterface* uiex, const char* pszEvent)
@@ -338,8 +356,9 @@ int X2Mount::establishLink(void)
     }
     else {
         m_bLinked = true;
+        sendSafetyLimitsToFirmware();
     }
-    
+
     return nErr;
 }
 
@@ -466,18 +485,18 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
     
     nErr = m_pTheSkyXForMounts->EqToHz(ra, dec, dAz, dAlt); if (nErr) return nErr;
     
-    if (!mAstroTrac.GetIsBeyondThePole() && dAlt < 0.0) {
+    if (!mAstroTrac.GetIsBeyondThePole() && dAlt < m_dHorizonLimitDeg) {
       // Were getting random problems with positions, to ensure we have several measurements
       m_iNTrackingOff++;
       if (m_iNTrackingOff >= N_TRACK_STOP) {
 
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 2
 	if (LogFile) {
 	  ltime = time(NULL);
 	  timestamp = asctime(localtime(&ltime));
 	  timestamp[strlen(timestamp) - 1] = 0;
-	  fprintf(LogFile, "[%s] raDec Called. Altitude < 0. dAlt %f, ha %f dec %f m_INTrackingOff %d\n", timestamp,
-		  dAlt,Ha, dec, m_iNTrackingOff);
+	  fprintf(LogFile, "[%s] raDec Called. Below horizon limit. dAlt %f, limit %f, ha %f dec %f m_INTrackingOff %d\n", timestamp,
+		  dAlt,m_dHorizonLimitDeg,Ha, dec, m_iNTrackingOff);
 	  fflush(LogFile);
 	}
 #endif
@@ -495,7 +514,7 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
       if (m_iNTrackingOff >= N_TRACK_STOP) {
         nErr = setTrackingRates(false, true, 0.0, 0.0);    // Stop tracking since these have been exceeded
         
-#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 1
+#if defined AstroTrac_X2_DEBUG && AstroTrac_X2_DEBUG >= 0
 	if (LogFile) {
 	  ltime = time(NULL);
 	  timestamp = asctime(localtime(&ltime));
