@@ -223,7 +223,14 @@ private:
 	LoggerInterface							*GetLogger() {return m_pLogger; }
 	MutexInterface							*GetMutex()  {return m_pIOMutex;}
 	TickCountInterface						*GetTickCountInterface() {return m_pTickCount;}
-	
+
+	// "Core" versions of setTrackingRates/isCompleteSlewTo/siderealTrackingOn - same logic, minus the
+	// link check and mutex lock. For callers (raDec, startSlewTo, trackingOff) that already hold the
+	// lock themselves, so they don't re-lock GetMutex() reentrantly by calling the public method.
+	int										setTrackingRatesCore(const bool& bTrackingOn, const bool& bIgnoreRates, const double& dRaRateArcSecPerSec, const double& dDecRateArcSecPerSec);
+	int										isCompleteSlewToCore(bool& bComplete) const;
+	int										siderealTrackingOnCore();
+
 	// Variables to store Sky X interfaces
 	int m_nPrivateMulitInstanceIndex;
 	SerXInterface*							m_pSerX;
@@ -250,8 +257,9 @@ private:
     // Sends this driver's meridian/horizon settings (padded with FIRMWARE_SAFETY_MARGIN_DEG) plus the
     // current site latitude to the mount firmware, if it's new enough to support 'lt'/'lh'/'la'. Called
     // after establishLink() and whenever the settings dialog is accepted, so changes take effect without
-    // needing a reconnect.
-    void sendSafetyLimitsToFirmware();
+    // needing a reconnect. Sends real commands via mAstroTrac - caller must already hold GetMutex()
+    // (both current call sites do; "Core" flags that contract for any future caller).
+    void sendSafetyLimitsToFirmwareCore();
 
     // Write a single debug log line if AstroTrac_X2_DEBUG is defined and at least nLevel, otherwise a
     // no-op. Centralizes the timestamp/fprintf/fflush boilerplate that used to be repeated at every log

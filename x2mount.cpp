@@ -68,9 +68,11 @@ X2Mount::~X2Mount()
 {
 	// Write the stored values
 
-    if(m_bLinked)
+    if(m_bLinked) {
+        X2MutexLocker ml(GetMutex());
         mAstroTrac.Disconnect();
-    
+    }
+
     if (m_pSerX)
 		delete m_pSerX;
 	if (m_pTheSkyXForMounts)
@@ -275,7 +277,7 @@ int X2Mount::execModalSettingsDialog(void)
         m_pIniUtil->writeInt(PARENT_KEY, CHILD_KEY_GUIDERATE, m_iGuideRateIndex);
         m_pIniUtil->writeDouble(PARENT_KEY, CHILD_KEY_HOURS_PAST_MERIDIAN, m_dHoursPastMeridian);
         m_pIniUtil->writeDouble(PARENT_KEY, CHILD_KEY_HORIZON_LIMIT, m_dHorizonLimitDeg);
-        if (m_bLinked) sendSafetyLimitsToFirmware();  //Apply immediately rather than waiting for a reconnect
+        if (m_bLinked) sendSafetyLimitsToFirmwareCore();  //Apply immediately rather than waiting for a reconnect
 	}
 	return nErr;
 }
@@ -284,7 +286,7 @@ int X2Mount::execModalSettingsDialog(void)
 // precedence, firmware limits are last-resort only and padded with FIRMWARE_SAFETY_MARGIN_DEG so they trip
 // after this driver's own check would have. No-ops harmlessly (via AstroTrac::sendSafetyLimits()) on
 // firmware older than FIRMWARE_MIN_VER_SAFETY_LIMITS.
-void X2Mount::sendSafetyLimitsToFirmware()
+void X2Mount::sendSafetyLimitsToFirmwareCore()
 {
     double dMeridianLimitDeg = m_dHoursPastMeridian * 15.0 + FIRMWARE_SAFETY_MARGIN_DEG;
     double dHorizonLimitDeg = m_dHorizonLimitDeg - FIRMWARE_SAFETY_MARGIN_DEG;
@@ -316,7 +318,7 @@ int X2Mount::establishLink(void)
     }
     else {
         m_bLinked = true;
-        sendSafetyLimitsToFirmware();
+        sendSafetyLimitsToFirmwareCore();
     }
 
     return nErr;
@@ -430,7 +432,7 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
 
     // Now check if have exceeded the tracking limits
     // First check to see if currently slewing - if so, then can return since no limits imposed during slews
-    nErr = isCompleteSlewTo(bComplete); if (nErr || !bComplete) return nErr;
+    nErr = isCompleteSlewToCore(bComplete); if (nErr || !bComplete) return nErr;
 
     // Now check to see if below the horizon.
     // Beyond the pole must be false (pointing west of meridian) for this to be true
@@ -444,7 +446,7 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
 
 	LogDebug(1, "raDec Called. Below horizon limit. dAlt %f, limit %f, ha %f dec %f m_INTrackingOff %d\n",
 		 dAlt, m_dHorizonLimitDeg, Ha, dec, m_iNTrackingOff);
-	nErr = setTrackingRates(false, true, 0.0, 0.0); if (nErr) return ERR_CMDFAILED; // Stop tracking since now too low and setting
+	nErr = setTrackingRatesCore(false, true, 0.0, 0.0); if (nErr) return ERR_CMDFAILED; // Stop tracking since now too low and setting
       }
     }
     // Now see if tracking beyond the meridian.
@@ -456,7 +458,7 @@ int X2Mount::raDec(double& ra, double& dec, const bool& bCached)
       // Were getting random problems with positions, to ensure we have several measurements
       m_iNTrackingOff++;
       if (m_iNTrackingOff >= N_TRACK_STOP) {
-        nErr = setTrackingRates(false, true, 0.0, 0.0);    // Stop tracking since these have been exceeded
+        nErr = setTrackingRatesCore(false, true, 0.0, 0.0);    // Stop tracking since these have been exceeded
 
 	LogDebug(1, "raDec Called. Too far past meridian. Ha %f m_iNTrackingOff %d\n", Ha, m_iNTrackingOff);
         if (nErr) return ERR_CMDFAILED;
@@ -501,7 +503,7 @@ int X2Mount::startSlewTo(const double& dRa, const double& dDec)
 
     X2MutexLocker ml(GetMutex());
     // Start tracking since mount remembers tracking state before slewing
-    siderealTrackingOn();
+    siderealTrackingOnCore();
 
     LogDebug(3, "startSlewTo Called %f %f\n", dRa, dDec);
 
@@ -520,13 +522,22 @@ int X2Mount::startSlewTo(const double& dRa, const double& dDec)
 
 int X2Mount::isCompleteSlewTo(bool& bComplete) const
 {
-    int nErr = SB_OK;
     if(!m_bLinked)
         return ERR_NOLINK;
 
     X2Mount* pMe = (X2Mount*)this;
     X2MutexLocker ml(pMe->GetMutex());
 
+    return pMe->isCompleteSlewToCore(bComplete);
+}
+
+// Same as isCompleteSlewTo(), minus the link check and mutex - for raDec(), which already holds the lock
+// itself and would otherwise re-lock GetMutex() reentrantly.
+int X2Mount::isCompleteSlewToCore(bool& bComplete) const
+{
+    int nErr = SB_OK;
+
+    X2Mount* pMe = (X2Mount*)this;
     nErr = pMe->mAstroTrac.isSlewToComplete(bComplete);
 
     if(nErr)
@@ -540,6 +551,11 @@ int X2Mount::isCompleteSlewTo(bool& bComplete) const
 int X2Mount::endSlewTo(void)
 {
     int nErr;
+
+    if(!m_bLinked)
+        return ERR_NOLINK;
+
+    X2MutexLocker ml(GetMutex());
 
     LogDebug(3, "endSlewTo Called\n");
 
@@ -586,20 +602,28 @@ bool X2Mount::isSynced(void)
 #pragma mark - TrackingRatesInterface
 int X2Mount::setTrackingRates(const bool& bTrackingOn, const bool& bIgnoreRates, const double& dRaRateArcSecPerSec, const double& dDecRateArcSecPerSec)
 {
-    int nErr = SB_OK;
     if(!m_bLinked)
         return ERR_NOLINK;
 
     X2MutexLocker ml(GetMutex());
+
+    return setTrackingRatesCore(bTrackingOn, bIgnoreRates, dRaRateArcSecPerSec, dDecRateArcSecPerSec);
+}
+
+// Same as setTrackingRates(), minus the link check and mutex - for callers (raDec, siderealTrackingOnCore,
+// trackingOff) that already hold the lock themselves and would otherwise re-lock GetMutex() reentrantly.
+int X2Mount::setTrackingRatesCore(const bool& bTrackingOn, const bool& bIgnoreRates, const double& dRaRateArcSecPerSec, const double& dDecRateArcSecPerSec)
+{
+    int nErr = SB_OK;
 
     nErr = mAstroTrac.setTrackingRates(bTrackingOn, bIgnoreRates, dRaRateArcSecPerSec, dDecRateArcSecPerSec);
 
     LogDebug(3, "setTrackingRates Called. Tracking On: %s , Ra rate : %f , Dec rate: %f nerr %d\n", bTrackingOn?"true":"false", dRaRateArcSecPerSec, dDecRateArcSecPerSec, nErr);
     if(nErr)
         return ERR_CMDFAILED;
-    
+
     return nErr;
-	
+
 }
 
 int X2Mount::trackingRates(bool& bTrackingOn, double& dRaRateArcSecPerSec, double& dDecRateArcSecPerSec)
@@ -620,15 +644,23 @@ int X2Mount::trackingRates(bool& bTrackingOn, double& dRaRateArcSecPerSec, doubl
 
 int X2Mount::siderealTrackingOn()
 {
-    int nErr = SB_OK;
     if(!m_bLinked)
         return ERR_NOLINK;
 
     X2MutexLocker ml(GetMutex());
 
+    return siderealTrackingOnCore();
+}
+
+// Same as siderealTrackingOn(), minus the link check and mutex - for startSlewTo(), which already holds
+// the lock itself and would otherwise re-lock GetMutex() reentrantly.
+int X2Mount::siderealTrackingOnCore()
+{
+    int nErr = SB_OK;
+
     LogDebug(3, "siderealTrackingOn Called \n");
 
-    nErr = setTrackingRates( true, true, 0.0, 0.0);
+    nErr = setTrackingRatesCore( true, true, 0.0, 0.0);
     if(nErr)
         return ERR_CMDFAILED;
 
@@ -647,7 +679,7 @@ int X2Mount::trackingOff()
 
     LogDebug(3, "trackingOff Called \n");
 
-    nErr = setTrackingRates( false, true, 0.0, 0.0);
+    nErr = setTrackingRatesCore( false, true, 0.0, 0.0);
     if(nErr)
         nErr = ERR_CMDFAILED;
 
