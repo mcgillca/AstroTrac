@@ -42,7 +42,7 @@
 //      timing distribution - the level 1 "succeeded after N retries" line only covers retried ones).
 //      Only useful when actively debugging the comms protocol itself.
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle.
-#define PLUGIN_DEBUG 2
+#define PLUGIN_DEBUG 1
 #define DRIVER_VERSION 1.7
 
 // Changelog:
