@@ -34,13 +34,14 @@
 //   0: Open-loop-move tracing (startOpenLoopMove/stopOpenLoopMove) - relevant to guiding performance.
 //   1: Notable/unexpected events worth a heads-up even outside active debugging - command outcome
 //      summaries (succeeded after N retries / FAILED), a malformed device error reply, an
-//      unexpectedly-mismatched extra reply, a response missing its closing '>'.
+//      unexpectedly-mismatched extra reply, a response missing its closing '>', a per-byte read
+//      erroring out or timing out (both logged with elapsed time vs. MAX_TIMEOUT).
 //   2: Full trace of the send-command machinery (AstroTracSendCommand/AstroTracSendCommandInnerLoop/
-//      readResponse) - purge/resend decisions, stale/duplicate-reply draining, per-byte read
-//      timeouts. Only useful when actively debugging the comms protocol itself.
+//      readResponse) - purge/resend decisions, stale/duplicate-reply draining. Only useful when
+//      actively debugging the comms protocol itself.
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle, byte-level
 //      read trace.
-#define PLUGIN_DEBUG 0
+#define PLUGIN_DEBUG 1
 #define DRIVER_VERSION 1.7
 
 // Changelog:
@@ -64,12 +65,13 @@
 enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BAD_CMD_RESPONSE, COMMAND_FAILED, PLUGIN_ERROR};
 
 #define SERIAL_BUFFER_SIZE 256
-#define MAX_TIMEOUT 100
+#define MAX_TIMEOUT 200
 #define PLUGIN_LOG_BUFFER_SIZE 256
 #define ERR_PARSE   1
 
 #define MAXSENDTRIES 3  // Maximum number of attempts to send a mesage to the mount
 #define MAX_STALE_RESPONSE_TRIES 2  // Maximum number of stray/stale replies to discard while looking for the real response to a command
+#define EXTRA_REPLY_WAIT_MS 200  // How long to give a genuinely in-flight duplicate reply to land, in DrainDuplicateReplies
 
 
 // Define Class for Astrometric Instruments AstroTrac controller.

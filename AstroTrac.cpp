@@ -233,7 +233,7 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
     // Read the framed "<...>" response for this command.
     nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE);
     if (nErr) {
-        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d reading response : %s\n", nErr, szResp);
+        LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d reading response : %s\n", nErr, szResp);
         return nErr;
     }
 
@@ -281,10 +281,10 @@ bool AstroTrac::PreparePortForSend(const char *pszCmd, bool bIsRetry)
 
     if (nBytesBeforePurge > 0 || nBytesAfterPurge > 0) {
         if (bSkipResend)
-            LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] %d byte(s) already waiting for Cmd: %s -- reading without resending\n",
+            LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] %d byte(s) already waiting for Cmd: %s -- reading without resending\n",
                      nBytesBeforePurge, pszCmd);
         else
-            LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] purgeTxRx for Cmd: %s -- bytesWaitingRx before: %d, after: %d\n",
+            LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] purgeTxRx for Cmd: %s -- bytesWaitingRx before: %d, after: %d\n",
                      pszCmd, nBytesBeforePurge, nBytesAfterPurge);
     }
 
@@ -318,19 +318,19 @@ int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, u
     int nErr = PLUGIN_OK;
 
     for (nStaleTries = 0; nStaleTries < MAX_STALE_RESPONSE_TRIES && !responseMatchesCommand(pszCmd, pszResp); nStaleTries++) {
-        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Mismatched response for Cmd: %s -- got stale reply: '%s', discarding (attempt %d/%d)\n",
+        LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] Mismatched response for Cmd: %s -- got stale reply: '%s', discarding (attempt %d/%d)\n",
                  pszCmd, pszResp, nStaleTries + 1, MAX_STALE_RESPONSE_TRIES);
 
         nErr = AstroTracreadResponse(pszResp, nBufLen);
         if (nErr) {
-            LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d re-reading response while discarding stale reply for Cmd: %s\n",
+            LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d re-reading response while discarding stale reply for Cmd: %s\n",
                      nErr, pszCmd);
             return nErr;
         }
     }
 
     if (!responseMatchesCommand(pszCmd, pszResp)) {
-        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Gave up after %d stale replies, still mismatched for Cmd: %s last reply: '%s'\n",
+        LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] Gave up after %d stale replies, still mismatched for Cmd: %s last reply: '%s'\n",
                  MAX_STALE_RESPONSE_TRIES, pszCmd, pszResp);
         return PLUGIN_BAD_CMD_RESPONSE;
     }
@@ -343,13 +343,13 @@ int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, u
 // is a reply to the very same command. Only worth checking when a resend has actually happened; a
 // first-try success never created an extra reply to worry about.
 //
-// waitForBytesRx(1, EXTRA_REPLY_WAIT_MS) was tried in place of the sleep+peek below, to give a
-// genuinely in-flight duplicate a short bounded window to land. Confirmed by direct measurement
-// (both before and after ruling out a degraded-connection explanation) that it does not honor the
-// requested timeout on the "nothing yet" path - it returns instantly when data is already there,
-// but takes ~0.9s regardless of the requested value otherwise, same as readFile's MAX_TIMEOUT.
-// Sleeping ourselves for a fixed, known duration before a non-blocking peek sidesteps relying on
-// the SDK's timeout handling at all.
+// waitForBytesRx(1, EXTRA_REPLY_WAIT_MS) was tried here previously in place of a fixed sleep+peek,
+// to give a genuinely in-flight duplicate a short bounded window to land, and measured (before the
+// x2mount.cpp mutex-nesting fixes) to not honor the requested timeout - it returned instantly when
+// data was already there, but took ~0.9s regardless of the requested value otherwise, same as
+// readFile's MAX_TIMEOUT. Re-trying it now that the reentrant-lock paths are fixed, with the wait
+// itself timed and logged so the two can be compared directly; bytesWaitingRx() below is kept as
+// the actual source of truth regardless of what waitForBytesRx's own return code reports.
 void AstroTrac::DrainDuplicateReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen, bool bIsRetry)
 {
     unsigned char szExtra[SERIAL_BUFFER_SIZE];
@@ -361,16 +361,24 @@ void AstroTrac::DrainDuplicateReplies(const char *pszCmd, unsigned char *pszResp
     for (nExtraTries = 0; nExtraTries < MAX_STALE_RESPONSE_TRIES; nExtraTries++) {
         int nBytesWaiting = 0;
         int nErrPeek;
+        int nErrWait;
+        struct timespec wStart, wEnd;
 
-        if (m_pSleeper)
-            m_pSleeper->sleep(200);
+        clock_gettime(CLOCK_MONOTONIC, &wStart);
+        nErrWait = m_pSerx->waitForBytesRx(1, EXTRA_REPLY_WAIT_MS);
+        clock_gettime(CLOCK_MONOTONIC, &wEnd);
+        {
+            double wElapsed = (wEnd.tv_sec - wStart.tv_sec) + (wEnd.tv_nsec - wStart.tv_nsec) * 1e-9;
+            LogDebug(1, "[AstroTrac::DrainDuplicateReplies] waitForBytesRx(1, %dms) returned %d after %.3f seconds\n",
+                     EXTRA_REPLY_WAIT_MS, nErrWait, wElapsed);
+        }
 
         nErrPeek = m_pSerx->bytesWaitingRx(nBytesWaiting);
 
         if (nErrPeek || nBytesWaiting <= 0)
             break;
 
-        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] %d more byte(s) already waiting after matching reply for Cmd: %s -- reading likely duplicate reply (attempt %d/%d)\n",
+        LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] %d more byte(s) already waiting after matching reply for Cmd: %s -- reading likely duplicate reply (attempt %d/%d)\n",
                  nBytesWaiting, pszCmd, nExtraTries + 1, MAX_STALE_RESPONSE_TRIES);
 
         if (AstroTracreadResponse(szExtra, nBufLen) || !responseMatchesCommand(pszCmd, szExtra)) {
@@ -379,7 +387,7 @@ void AstroTrac::DrainDuplicateReplies(const char *pszCmd, unsigned char *pszResp
             break;
         }
 
-        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] discarding stale duplicate reply: '%s', keeping newer reply: '%s' for Cmd: %s\n",
+        LogDebug(1, "[AstroTrac::AstroTracSendCommandInnerLoop] discarding stale duplicate reply: '%s', keeping newer reply: '%s' for Cmd: %s\n",
                  pszResp, szExtra, pszCmd);
 
         memcpy(pszResp, szExtra, nBufLen);
@@ -434,8 +442,35 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
     pszBufPtr = pszRespBuffer;
 
     do {
+        int nErrWait;
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
         struct timespec rfStart, rfEnd;
+        clock_gettime(CLOCK_MONOTONIC, &rfStart);
+#endif
+        // Wait for the byte to actually be there before asking readFile for it, instead of relying
+        // on readFile's own timeout - testing whether this behaves differently now that the
+        // x2mount.cpp mutex-nesting fixes are in (see DrainDuplicateReplies for the earlier,
+        // pre-fix measurement of waitForBytesRx not honoring its requested timeout). waitForBytesRx
+        // doesn't deliver the byte itself, so a readFile call still follows once it reports ready.
+        nErrWait = m_pSerx->waitForBytesRx(1, MAX_TIMEOUT);
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
+        {
+            clock_gettime(CLOCK_MONOTONIC, &rfEnd);
+            double waitElapsed = (rfEnd.tv_sec - rfStart.tv_sec) + (rfEnd.tv_nsec - rfStart.tv_nsec) * 1e-9;
+            // Only log a genuine failure - unlike readFile's silent "0 bytes, no error" timeout,
+            // waitForBytesRx reliably reports a real error code here (e.g. 209 = ERR_RXTIMEOUT), so
+            // that alone is a clean signal; no need for an elapsed-time heuristic on top of it.
+            if (nErrWait)
+                LogDebug(1, "[AstroTrac::readResponse] waitForBytesRx(1, %dms) returned %d after %.3f seconds (had %lu byte(s) so far: '%s')\n",
+                         MAX_TIMEOUT, nErrWait, waitElapsed, ulTotalBytesRead, pszRespBuffer);
+        }
+#endif
+        if (nErrWait) {
+            nErr = PLUGIN_BAD_CMD_RESPONSE;
+            return nErr;
+        }
+
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
         clock_gettime(CLOCK_MONOTONIC, &rfStart);
 #endif
         nErr = m_pSerx->readFile(pszBufPtr, 1, ulBytesRead, MAX_TIMEOUT);
@@ -444,11 +479,11 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
             clock_gettime(CLOCK_MONOTONIC, &rfEnd);
             double rfElapsed = (rfEnd.tv_sec - rfStart.tv_sec) + (rfEnd.tv_nsec - rfStart.tv_nsec) * 1e-9;
             if (nErr)
-                LogDebug(2, "[AstroTrac::readResponse] readFile error %d after %.3f seconds (had %lu byte(s) so far: '%s')\n",
-                         nErr, rfElapsed, ulTotalBytesRead, pszRespBuffer);
+                LogDebug(1, "[AstroTrac::readResponse] readFile error %d after %.3f seconds (of %dms requested timeout, had %lu byte(s) so far: '%s')\n",
+                         nErr, rfElapsed, MAX_TIMEOUT, ulTotalBytesRead, pszRespBuffer);
             else
-                LogDebug(2, "[AstroTrac::readResponse] readFile got %lu byte(s) (wanted 1) after %.3f seconds (had %lu byte(s) so far: '%s')\n",
-                         ulBytesRead, rfElapsed, ulTotalBytesRead, pszRespBuffer);
+                LogDebug(1, "[AstroTrac::readResponse] readFile got %lu byte(s) (wanted 1) after %.3f seconds DESPITE waitForBytesRx reporting ready (of %dms requested timeout, had %lu byte(s) so far: '%s')\n",
+                         ulBytesRead, rfElapsed, MAX_TIMEOUT, ulTotalBytesRead, pszRespBuffer);
 #endif
             if (nErr) return nErr;
         }
