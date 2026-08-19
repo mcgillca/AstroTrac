@@ -34,12 +34,29 @@
 #define CHILD_KEY_PORT_NAME "PortName"
 #define CHILD_KEY_GUIDERATE "GuideRate"
 #define CHILD_KEY_HOURS_PAST_MERIDIAN "HPMeridian"
+#define CHILD_KEY_HORIZON_LIMIT "HorizonLimit"
 
 #define MAX_PORT_NAME_SIZE 120
 //#define TRAC_PAST_MERIDIAN 1.0   // Allow mount to track this much beyond the Meridian - set to 1 hour for now
 #define N_TRACK_STOP       4     // Require 4 successive location co-ordinates beyond limits (meridian or horizon) to stop tracking
 
-// #define AstroTrac_X2_DEBUG  2  // Define this to have log files. 1 for just bad things, 2 for general stuff.
+// Firmware-level safety backstop ('lt'/'lh'/'la' commands - see AstroTrac::sendSafetyLimits(), which also
+// defines the minimum firmware version that understands them). This driver's own meridian/horizon checks in
+// raDec() take precedence and should stop tracking first; the firmware limits are sent with this much extra
+// margin so they only trip if this driver's check somehow fails to (e.g. TheSkyX hangs or the connection drops).
+#define FIRMWARE_SAFETY_MARGIN_DEG 3.0
+
+// Comment out AstroTrac_X2_DEBUG entirely for a production build - LogFile/LogDebug then compile away to
+// nothing (see LogDebug in x2mount.cpp). When defined, controls how much gets logged. Levels mirror the
+// PLUGIN_DEBUG scheme in AstroTrac.h so the two log files read consistently (levels 0 and 2 have no sites
+// here - the open-loop-move timing and send-command machinery they cover live in AstroTrac.cpp):
+//   0: (unused here) - open-loop-move timing lives in AstroTrac.cpp under PLUGIN_DEBUG.
+//   1: Open-loop-move tracing (relevant to guiding) plus notable/unexpected events worth a heads-up even
+//      outside active debugging - command failures (open-loop move, slew, unpark) and the safety stops
+//      that halt tracking (below horizon / past meridian).
+//   2: (unused here) - the send-command machinery it would cover lives in AstroTrac.cpp.
+//   3: Everything else - driver/connection lifecycle, coordinate/math tracing, slew and tracking lifecycle.
+// #define AstroTrac_X2_DEBUG  3  // Uncomment to enable logging (levels 0-3, see above)
 
 #if defined(SB_WIN_BUILD)
 #define DEF_PORT_NAME					"COM1"
@@ -155,7 +172,7 @@ public:
     //PulseGuideInterface
     virtual int useOpenLoopMoveInterface(int& nGuideRateIndex, OpenLoopMoveInterface** pOLSI)
     {
-        nGuideRateIndex = m_iGuideRateIndex+1; // nGuideRateIndex seems to be based to start at 1.
+        nGuideRateIndex = m_iGuideRateIndex; 
         return queryAbstraction(OpenLoopMoveInterface_Name, (void**)pOLSI);
     }
 	
@@ -206,7 +223,14 @@ private:
 	LoggerInterface							*GetLogger() {return m_pLogger; }
 	MutexInterface							*GetMutex()  {return m_pIOMutex;}
 	TickCountInterface						*GetTickCountInterface() {return m_pTickCount;}
-	
+
+	// "Core" versions of setTrackingRates/isCompleteSlewTo/siderealTrackingOn - same logic, minus the
+	// link check and mutex lock. For callers (raDec, startSlewTo, trackingOff) that already hold the
+	// lock themselves, so they don't re-lock GetMutex() reentrantly by calling the public method.
+	int										setTrackingRatesCore(const bool& bTrackingOn, const bool& bIgnoreRates, const double& dRaRateArcSecPerSec, const double& dDecRateArcSecPerSec);
+	int										isCompleteSlewToCore(bool& bComplete) const;
+	int										siderealTrackingOnCore();
+
 	// Variables to store Sky X interfaces
 	int m_nPrivateMulitInstanceIndex;
 	SerXInterface*							m_pSerX;
@@ -230,16 +254,27 @@ private:
 
     void portNameOnToCharPtr(char* pszPort, const unsigned int& nMaxSize) const;
 
+    // Sends this driver's meridian/horizon settings (padded with FIRMWARE_SAFETY_MARGIN_DEG) plus the
+    // current site latitude to the mount firmware, if it's new enough to support 'lt'/'lh'/'la'. Called
+    // after establishLink() and whenever the settings dialog is accepted, so changes take effect without
+    // needing a reconnect. Sends real commands via mAstroTrac - caller must already hold GetMutex()
+    // (both current call sites do; "Core" flags that contract for any future caller).
+    void sendSafetyLimitsToFirmwareCore();
+
+    // Write a single debug log line if AstroTrac_X2_DEBUG is defined and at least nLevel, otherwise a
+    // no-op. Centralizes the timestamp/fprintf/fflush boilerplate that used to be repeated at every log
+    // site. Mirrors AstroTrac::LogDebug(); const so it can be called from const methods like isCompleteSlewTo().
+    void LogDebug(int nLevel, const char *pszFormat, ...) const;
+
     int m_iNTrackingOff = 0;
     
     int m_iGuideRateIndex = 0; //Default - 0.1x siderial
 
     double m_dHoursPastMeridian = 0.0;
+    double m_dHorizonLimitDeg = 0.0;
     
 #ifdef AstroTrac_X2_DEBUG
     std::string m_sLogfilePath;
-    char *timestamp;
-    time_t ltime;
 	FILE *LogFile;	  // LogFile
 #endif
 	

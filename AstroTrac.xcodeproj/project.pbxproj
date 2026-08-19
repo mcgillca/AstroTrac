@@ -3,11 +3,10 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 46;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		93AE6FB12002B7BC00748C07 /* StopWatch.h in Headers */ = {isa = PBXBuildFile; fileRef = 93AE6FB02002B7BC00748C07 /* StopWatch.h */; };
 		93B6BC601E62127D0050E48B /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 93B6BC5A1E62127D0050E48B /* main.cpp */; };
 		93B6BC611E62127D0050E48B /* main.h in Headers */ = {isa = PBXBuildFile; fileRef = 93B6BC5B1E62127D0050E48B /* main.h */; };
 		93B6BC621E62127D0050E48B /* AstroTrac.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 93B6BC5C1E62127D0050E48B /* AstroTrac.cpp */; };
@@ -19,7 +18,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		93AE6FB02002B7BC00748C07 /* StopWatch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StopWatch.h; sourceTree = "<group>"; };
 		93B6BC521E62122B0050E48B /* libAstroTrac.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libAstroTrac.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
 		93B6BC5A1E62127D0050E48B /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		93B6BC5B1E62127D0050E48B /* main.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = main.h; sourceTree = "<group>"; };
@@ -64,7 +62,6 @@
 		93B6BC591E6212610050E48B /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				93AE6FB02002B7BC00748C07 /* StopWatch.h */,
 				93B6BC5A1E62127D0050E48B /* main.cpp */,
 				93B6BC5B1E62127D0050E48B /* main.h */,
 				93B6BC5C1E62127D0050E48B /* AstroTrac.cpp */,
@@ -93,7 +90,6 @@
 			files = (
 				93B6BC611E62127D0050E48B /* main.h in Headers */,
 				93B6BC651E62127D0050E48B /* x2mount.h in Headers */,
-				93AE6FB12002B7BC00748C07 /* StopWatch.h in Headers */,
 				93B6BC631E62127D0050E48B /* AstroTrac.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -124,7 +120,8 @@
 		93B6BC4A1E62122B0050E48B /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 1220;
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2630;
 				ORGANIZATIONNAME = "RTI-Zone";
 				TargetAttributes = {
 					93B6BC511E62122B0050E48B = {
@@ -200,10 +197,12 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 66H78APB8U;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = "compiler-default";
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -223,6 +222,7 @@
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 			};
 			name = Debug;
 		};
@@ -260,10 +260,12 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 66H78APB8U;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = "compiler-default";
 				GCC_NO_COMMON_BLOCKS = YES;
 				"GCC_PREPROCESSOR_DEFINITIONS[arch=*]" = SB_MAC_BUILD;
@@ -277,12 +279,14 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				ONLY_ACTIVE_ARCH = NO;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 			};
 			name = Release;
 		};
 		93B6BC571E62122B0050E48B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = PB97QXVYQC;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -292,7 +296,7 @@
 					"\"$(SRCROOT)/\"",
 					"\"$(SRCROOT)/../..\"",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -300,6 +304,7 @@
 		93B6BC581E62122B0050E48B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = PB97QXVYQC;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -309,7 +314,7 @@
 					"\"$(SRCROOT)/\"",
 					"\"$(SRCROOT)/../..\"",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;

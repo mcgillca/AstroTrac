@@ -14,9 +14,9 @@
             filePath = "AstroTrac.cpp"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "715"
-            endingLineNumber = "715"
-            landmarkName = "AstroTrac::startSlewTo(dHa, dDec, dRa)"
+            startingLineNumber = "740"
+            endingLineNumber = "740"
+            landmarkName = "AstroTrac::setTrackingRates(bTrackingOn, bIgnoreRates, dRaRateArcSecPerSec, dDecRateArcSecPerSec)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
