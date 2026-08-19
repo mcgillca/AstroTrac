@@ -34,13 +34,15 @@
 //   0: Open-loop-move tracing (startOpenLoopMove/stopOpenLoopMove) - relevant to guiding performance.
 //   1: Notable/unexpected events worth a heads-up even outside active debugging - command outcome
 //      summaries (succeeded after N retries / FAILED), a malformed device error reply, an
-//      unexpectedly-mismatched extra reply, a response missing its closing '>'.
+//      unexpectedly-mismatched extra reply, a response missing its closing '>', a read that timed
+//      out waiting for bytes (with elapsed time), or fewer bytes read than bytesWaitingRx reported.
 //   2: Full trace of the send-command machinery (AstroTracSendCommand/AstroTracSendCommandInnerLoop/
-//      readResponse) - purge/resend decisions, stale/duplicate-reply draining, per-byte read
-//      timeouts. Only useful when actively debugging the comms protocol itself.
-//   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle, byte-level
-//      read trace.
-// #define PLUGIN_DEBUG 0
+//      readResponse) - purge/resend decisions, stale/duplicate-reply draining, each batch of bytes
+//      read in readResponse, and every first-try-success command's round-trip time (for building a
+//      timing distribution - the level 1 "succeeded after N retries" line only covers retried ones).
+//      Only useful when actively debugging the comms protocol itself.
+//   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle.
+#define PLUGIN_DEBUG 2
 #define DRIVER_VERSION 1.7
 
 // Changelog:
@@ -64,12 +66,16 @@
 enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BAD_CMD_RESPONSE, COMMAND_FAILED, PLUGIN_ERROR};
 
 #define SERIAL_BUFFER_SIZE 256
-#define MAX_TIMEOUT 100
+#define MAX_TIMEOUT 300
 #define PLUGIN_LOG_BUFFER_SIZE 256
 #define ERR_PARSE   1
 
 #define MAXSENDTRIES 3  // Maximum number of attempts to send a mesage to the mount
 #define MAX_STALE_RESPONSE_TRIES 2  // Maximum number of stray/stale replies to discard while looking for the real response to a command
+// 3ms was picked from measurement: at 25ms polling, replies clustered almost entirely in the
+// first one or two poll windows; dropping to 3ms revealed the true round-trip is ~2-9ms for the
+// overwhelming majority of commands, with no sign of a coarser scheduler floor forcing it back up.
+#define READ_POLL_INTERVAL_MS 3  // How often AstroTracreadResponse re-checks bytesWaitingRx while waiting for a reply
 
 
 // Define Class for Astrometric Instruments AstroTrac controller.

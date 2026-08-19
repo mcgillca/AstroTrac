@@ -186,14 +186,18 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
     for (itries = 0; itries < MAXSENDTRIES; itries++) {
         nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen, itries > 0);
         if (nErr == PLUGIN_OK) {
-            // Only log the ones that needed a retry - this is the total time from the first send
-            // attempt to a working reply, which is what a longer read timeout would need to beat.
-            if (itries > 0) {
-                clock_gettime(CLOCK_MONOTONIC, &cmdNow);
-                double cmdElapsed = (cmdNow.tv_sec - cmdStart.tv_sec) + (cmdNow.tv_nsec - cmdStart.tv_nsec) * 1e-9;
+            clock_gettime(CLOCK_MONOTONIC, &cmdNow);
+            double cmdElapsed = (cmdNow.tv_sec - cmdStart.tv_sec) + (cmdNow.tv_nsec - cmdStart.tv_nsec) * 1e-9;
+            if (itries > 0)
+                // Notable - this is the total time from the first send attempt to a working
+                // reply, which is what a longer read timeout would need to beat.
                 LogDebug(1, "AstroTrac::AstroTracSendCommand Cmd: %s succeeded after %d retries, %.3f seconds total\n",
                          pszCmd, itries, cmdElapsed);
-            }
+            else
+                // Routine (first-try success, the common case) - only useful in bulk, e.g. to
+                // build a distribution of normal round-trip timing, so kept off level 1.
+                LogDebug(2, "AstroTrac::AstroTracSendCommand Cmd: %s succeeded first try, %.3f seconds total\n",
+                         pszCmd, cmdElapsed);
             return nErr;
         }
 
@@ -423,45 +427,69 @@ bool AstroTrac::responseMatchesCommand(const char *pszCmd, const unsigned char *
     return false;
 }
 
+// Poll bytesWaitingRx and only call readFile once bytes are actually confirmed present, reading
+// whatever's waiting in one call rather than one byte at a time. Timeout is self-managed (sleep
+// READ_POLL_INTERVAL_MS between polls, up to MAX_TIMEOUT total) rather than relying on readFile's
+// or waitForBytesRx's own timeout, which earlier testing found doesn't reliably honor the value
+// requested. Ported from the read-loop approach in the old Development branch (deviceCommand /
+// readResponse there), minus its std::string signature - the existing char*-buffer API is kept.
 int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int nBufferLen)
 {
     int nErr = PLUGIN_OK;
     unsigned long ulBytesRead = 0;
     unsigned long ulTotalBytesRead = 0;
     unsigned char *pszBufPtr;
+    int nMsWaited = 0;
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
+    struct timespec rfStart, rfEnd;
+    clock_gettime(CLOCK_MONOTONIC, &rfStart);
+#endif
 
     memset(pszRespBuffer, 0, (size_t) nBufferLen);
     pszBufPtr = pszRespBuffer;
 
     do {
+        int nBytesWaiting = 0;
+        int nErrPeek = m_pSerx->bytesWaitingRx(nBytesWaiting);
+
+        if (nErrPeek || nBytesWaiting <= 0) {
+            if (nMsWaited >= (int)MAX_TIMEOUT) {
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-        struct timespec rfStart, rfEnd;
-        clock_gettime(CLOCK_MONOTONIC, &rfStart);
+                clock_gettime(CLOCK_MONOTONIC, &rfEnd);
+                double rfElapsed = (rfEnd.tv_sec - rfStart.tv_sec) + (rfEnd.tv_nsec - rfStart.tv_nsec) * 1e-9;
+                LogDebug(1, "[AstroTrac::readResponse] TIMED OUT: no bytes waiting after %.3f seconds (of %dms requested timeout, had %lu byte(s) so far: '%s')\n",
+                         rfElapsed, MAX_TIMEOUT, ulTotalBytesRead, pszRespBuffer);
 #endif
-        nErr = m_pSerx->readFile(pszBufPtr, 1, ulBytesRead, MAX_TIMEOUT);
-        if(nErr || ulBytesRead != 1) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-            clock_gettime(CLOCK_MONOTONIC, &rfEnd);
-            double rfElapsed = (rfEnd.tv_sec - rfStart.tv_sec) + (rfEnd.tv_nsec - rfStart.tv_nsec) * 1e-9;
-            if (nErr)
-                LogDebug(2, "[AstroTrac::readResponse] readFile error %d after %.3f seconds (had %lu byte(s) so far: '%s')\n",
-                         nErr, rfElapsed, ulTotalBytesRead, pszRespBuffer);
-            else
-                LogDebug(2, "[AstroTrac::readResponse] readFile got %lu byte(s) (wanted 1) after %.3f seconds (had %lu byte(s) so far: '%s')\n",
-                         ulBytesRead, rfElapsed, ulTotalBytesRead, pszRespBuffer);
-#endif
-            if (nErr) return nErr;
+                return PLUGIN_BAD_CMD_RESPONSE;
+            }
+            if (m_pSleeper)
+                m_pSleeper->sleep(READ_POLL_INTERVAL_MS);
+            nMsWaited += READ_POLL_INTERVAL_MS;
+            continue;
         }
 
-        LogDebug(3, "[AstroTrac::readResponse] *pszBufPtr = 0x%02X ulBytesRead %d\n", *pszBufPtr, ulBytesRead);
+        // Read whatever's waiting in one call, bounded by remaining buffer space.
+        unsigned long ulToRead = (unsigned long)nBytesWaiting;
+        if (ulTotalBytesRead + ulToRead > nBufferLen)
+            ulToRead = nBufferLen - ulTotalBytesRead;
 
-        if (ulBytesRead != 1) {// timeout
-            nErr = PLUGIN_BAD_CMD_RESPONSE;
-	    return nErr;
+        nErr = m_pSerx->readFile(pszBufPtr, ulToRead, ulBytesRead, MAX_TIMEOUT);
+        if (nErr) {
+            LogDebug(1, "[AstroTrac::readResponse] readFile error %d reading %lu waiting byte(s) (had %lu byte(s) so far: '%s')\n",
+                     nErr, ulToRead, ulTotalBytesRead, pszRespBuffer);
+            return nErr;
         }
+        if (ulBytesRead != ulToRead)
+            LogDebug(1, "[AstroTrac::readResponse] readFile got %lu byte(s), bytesWaitingRx had reported %lu waiting (had %lu byte(s) so far: '%s')\n",
+                     ulBytesRead, ulToRead, ulTotalBytesRead, pszRespBuffer);
+
+        LogDebug(2, "[AstroTrac::readResponse] bytesWaitingRx=%d, read %lu byte(s)\n", nBytesWaiting, ulBytesRead);
+
+        nMsWaited = 0;
         ulTotalBytesRead += ulBytesRead;
+        pszBufPtr += ulBytesRead;
 
-    } while (*pszBufPtr++ != '>' && ulTotalBytesRead < nBufferLen );
+    } while ((ulTotalBytesRead == 0 || *(pszBufPtr - 1) != '>') && ulTotalBytesRead < nBufferLen);
 
 
     // Last character should be a '>' - if not send error message
