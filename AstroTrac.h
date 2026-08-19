@@ -40,7 +40,7 @@
 //      timeouts. Only useful when actively debugging the comms protocol itself.
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle, byte-level
 //      read trace.
-#define PLUGIN_DEBUG 0
+// #define PLUGIN_DEBUG 0
 #define DRIVER_VERSION 1.7
 
 // Changelog:
