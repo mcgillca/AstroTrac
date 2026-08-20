@@ -35,14 +35,16 @@
 //   1: Notable/unexpected events worth a heads-up even outside active debugging - command outcome
 //      summaries (succeeded after N retries / FAILED), a malformed device error reply, an
 //      unexpectedly-mismatched extra reply, a response missing its closing '>', a read that timed
-//      out waiting for bytes (with elapsed time), or fewer bytes read than bytesWaitingRx reported.
+//      out waiting for bytes (with elapsed time), fewer bytes read than bytesWaitingRx reported, or
+//      a writeFile error sending a command.
 //   2: Full trace of the send-command machinery (AstroTracSendCommand/AstroTracSendCommandInnerLoop/
 //      readResponse) - purge/resend decisions, stale/duplicate-reply draining, each batch of bytes
-//      read in readResponse, and every first-try-success command's round-trip time (for building a
-//      timing distribution - the level 1 "succeeded after N retries" line only covers retried ones).
-//      Only useful when actively debugging the comms protocol itself.
+//      read in readResponse, how long WriteCommand's writeFile+flushTx took to send each command,
+//      and every first-try-success command's round-trip time (for building a timing distribution -
+//      the level 1 "succeeded after N retries" line only covers retried ones). Only useful when
+//      actively debugging the comms protocol itself.
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle.
-#define PLUGIN_DEBUG 1
+// #define PLUGIN_DEBUG 2
 #define DRIVER_VERSION 1.7
 
 // Changelog:

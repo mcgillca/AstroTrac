@@ -301,14 +301,26 @@ int AstroTrac::WriteCommand(const char *pszCmd)
 {
     int nErr;
     unsigned long ulBytesWrite;
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
+    struct timespec wcStart, wcEnd;
+    clock_gettime(CLOCK_MONOTONIC, &wcStart);
+#endif
 
     LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Sending %s\n", pszCmd);
 
     nErr = m_pSerx->writeFile((void *)pszCmd, strlen(pszCmd), ulBytesWrite);
     m_pSerx->flushTx();
 
+#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
+    {
+        clock_gettime(CLOCK_MONOTONIC, &wcEnd);
+        double wcElapsed = (wcEnd.tv_sec - wcStart.tv_sec) + (wcEnd.tv_nsec - wcStart.tv_nsec) * 1e-9;
+        LogDebug(2, "[AstroTrac::WriteCommand] writeFile+flushTx for Cmd: %s took %.3f seconds\n", pszCmd, wcElapsed);
+    }
+#endif
+
     if (nErr)
-        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLooop] error %d sending command : %s\n", nErr, pszCmd);
+        LogDebug(1, "[AstroTrac::WriteCommand] error %d sending command : %s\n", nErr, pszCmd);
 
     return nErr;
 }
