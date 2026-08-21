@@ -45,7 +45,7 @@
 //      actively debugging the comms protocol itself.
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle.
 // #define PLUGIN_DEBUG 2
-#define DRIVER_VERSION 1.7
+#define DRIVER_VERSION 2.0
 
 // Changelog:
 // Version  1.0: Initial release
@@ -58,6 +58,11 @@
 //          1.7: Added horizon limit setting, and send both it and the meridian/latitude settings to the mount
 //               firmware (>= 2.35) as a last-resort backstop, padded with FIRMWARE_SAFETY_MARGIN_DEG so this
 //               driver's own meridian/horizon checks in raDec() still take precedence.
+//          2.0: Audited and fixed mutex coverage around every call into AstroTrac.cpp, including a reentrant-locking
+//               deadlock risk. Rewrote the read path (AstroTracreadResponse) to poll bytesWaitingRx and batch-read
+//               instead of relying on readFile's unreliable per-byte timeout, and tuned the retry/timeout constants
+//               from measured hardware data. Added the firmware-level post-meridian/horizon safety backstop
+//               (see 1.7) as the headline new capability.
 
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
