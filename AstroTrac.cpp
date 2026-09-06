@@ -9,17 +9,53 @@ AstroTrac::AstroTrac()
     m_bLimitCached = false;
     
 #ifdef PLUGIN_DEBUG
+    std::string sLogDir;
+    std::string sPathSep;
 #if defined(SB_WIN_BUILD)
-    m_sLogfilePath = getenv("HOMEDRIVE");
-    m_sLogfilePath += getenv("HOMEPATH");
-    m_sLogfilePath += "\\AstroTracLog.txt";
+    sLogDir = getenv("HOMEDRIVE");
+    sLogDir += getenv("HOMEPATH");
+    sPathSep = "\\";
 #elif defined(SB_LINUX_BUILD)
-    m_sLogfilePath = getenv("HOME");
-    m_sLogfilePath += "/AstroTracLog.txt";
+    sLogDir = getenv("HOME");
+    sPathSep = "/";
 #elif defined(SB_MAC_BUILD)
-    m_sLogfilePath = getenv("HOME");
-    m_sLogfilePath += "/AstroTracLog.txt";
+    sLogDir = getenv("HOME");
+    sPathSep = "/";
 #endif
+
+    // Name the log after the observing night, using the same "noon to noon"
+    // convention TheSkyX itself uses for its guide-log folders (e.g.
+    // "September 04 2026" covers the night from midday Sep 4 to midday
+    // Sep 5) - lets this log be matched to its corresponding guiding data by
+    // date at a glance, and stops a second connection on the same night from
+    // silently overwriting the first (see versioning below).
+    time_t nowTime = time(nullptr);
+    struct tm nightTm;
+#if defined(SB_WIN_BUILD)
+    localtime_s(&nightTm, &nowTime);
+#else
+    localtime_r(&nowTime, &nightTm);
+#endif
+    if (nightTm.tm_hour < 12) {
+        nowTime -= 12 * 3600;
+#if defined(SB_WIN_BUILD)
+        localtime_s(&nightTm, &nowTime);
+#else
+        localtime_r(&nowTime, &nightTm);
+#endif
+    }
+    char szNightDate[32];
+    strftime(szNightDate, sizeof(szNightDate), "%B %d %Y", &nightTm);
+
+    std::string sBaseName = std::string("AstroTracLog_") + szNightDate;
+    m_sLogfilePath = sLogDir + sPathSep + sBaseName + ".txt";
+    int nVersion = 1;
+    while (FILE *pExisting = fopen(m_sLogfilePath.c_str(), "r")) {
+        fclose(pExisting);
+        nVersion++;
+        m_sLogfilePath = sLogDir + sPathSep + sBaseName + "_v" + std::to_string(nVersion) + ".txt";
+    }
+
 	Logfile = fopen(m_sLogfilePath.c_str(), "w");
 #endif
 

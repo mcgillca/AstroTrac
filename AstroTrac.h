@@ -44,8 +44,8 @@
 //      the level 1 "succeeded after N retries" line only covers retried ones). Only useful when
 //      actively debugging the comms protocol itself.
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle.
-// #define PLUGIN_DEBUG 2
-#define DRIVER_VERSION 2.0
+#define PLUGIN_DEBUG 2
+#define DRIVER_VERSION 2.01
 
 // Changelog:
 // Version  1.0: Initial release
@@ -63,6 +63,9 @@
 //               instead of relying on readFile's unreliable per-byte timeout, and tuned the retry/timeout constants
 //               from measured hardware data. Added the firmware-level post-meridian/horizon safety backstop
 //               (see 1.7) as the headline new capability.
+//          2.01: Name the debug log after the observing night (noon-to-noon, matching TheSkyX's own guide-log
+//               folder naming) instead of a fixed AstroTracLog.txt, and append _v2/_v3/... if a log for that
+//               night already exists, so a second connection no longer silently overwrites the first.
 
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
