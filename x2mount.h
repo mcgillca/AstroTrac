@@ -56,7 +56,7 @@
 //      that halt tracking (below horizon / past meridian).
 //   2: (unused here) - the send-command machinery it would cover lives in AstroTrac.cpp.
 //   3: Everything else - driver/connection lifecycle, coordinate/math tracing, slew and tracking lifecycle.
-// #define AstroTrac_X2_DEBUG  3  // Uncomment to enable logging (levels 0-3, see above)
+// #define AstroTrac_X2_DEBUG  1  // Uncomment to enable logging (levels 0-3, see above)
 
 #if defined(SB_WIN_BUILD)
 #define DEF_PORT_NAME					"COM1"
