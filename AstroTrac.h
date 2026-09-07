@@ -45,7 +45,7 @@
 //      actively debugging the comms protocol itself.
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle.
 #define PLUGIN_DEBUG 2
-#define DRIVER_VERSION 2.01
+#define DRIVER_VERSION 2.02
 
 // Changelog:
 // Version  1.0: Initial release
@@ -66,6 +66,9 @@
 //          2.01: Name the debug log after the observing night (noon-to-noon, matching TheSkyX's own guide-log
 //               folder naming) instead of a fixed AstroTracLog.txt, and append _v2/_v3/... if a log for that
 //               night already exists, so a second connection no longer silently overwrites the first.
+//          2.02: Recover a matching reply already sitting at the end of a stale reply backlog (delayed
+//               responses can arrive bunched together after a comms stall) instead of discarding the whole
+//               buffer and, once MAX_STALE_RESPONSE_TRIES is exhausted, forcing an unnecessary resend.
 
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
@@ -202,6 +205,7 @@ private:
     bool    PreparePortForSend(const char *pszCmd, bool bIsRetry);
     int     WriteCommand(const char *pszCmd);
     int     DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen);
+    bool    RecoverMatchingReply(const char *pszCmd, unsigned char *pszResp);
     void    DrainDuplicateReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen, bool bIsRetry);
     void    LogDebug(int nLevel, const char *pszFormat, ...);
 

@@ -361,15 +361,43 @@ int AstroTrac::WriteCommand(const char *pszCmd)
     return nErr;
 }
 
-// Keep reading until pszResp matches pszCmd (see responseMatchesCommand), or give up after
-// MAX_STALE_RESPONSE_TRIES - handles a stray reply left over from an earlier, different command
-// still being in the pipe when we start reading this one's response.
+// A delayed reply backlog (see AstroTracreadResponse) can land as several concatenated "<...>"
+// frames in one read, with the actual answer to the current command sitting behind one or more
+// stale frames from an earlier command. Every frame keeps its own '>' terminator except the very
+// last one in the whole buffer, which gets nulled out to close the string (see
+// AstroTracreadResponse) - so frames stay distinguishable by scanning for '<'. Returns true, and
+// shifts that frame to the front of pszResp if it wasn't already there, when the LAST frame
+// matches pszCmd - recovering an answer that's already arrived instead of discarding it.
+bool AstroTrac::RecoverMatchingReply(const char *pszCmd, unsigned char *pszResp)
+{
+    unsigned char *pszLastFrame = pszResp;
+
+    for (unsigned char *p = pszResp; *p; p++) {
+        if (*p == '<')
+            pszLastFrame = p;
+    }
+
+    if (!responseMatchesCommand(pszCmd, pszLastFrame))
+        return false;
+
+    if (pszLastFrame != pszResp) {
+        memmove(pszResp, pszLastFrame, strlen((const char *)pszLastFrame) + 1);
+        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Recovered matching reply for Cmd: %s from end of stale backlog: '%s'\n",
+                 pszCmd, pszResp);
+    }
+
+    return true;
+}
+
+// Keep reading until pszResp matches pszCmd (see RecoverMatchingReply / responseMatchesCommand),
+// or give up after MAX_STALE_RESPONSE_TRIES - handles a stray reply left over from an earlier,
+// different command still being in the pipe when we start reading this one's response.
 int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen)
 {
     int nStaleTries;
     int nErr = PLUGIN_OK;
 
-    for (nStaleTries = 0; nStaleTries < MAX_STALE_RESPONSE_TRIES && !responseMatchesCommand(pszCmd, pszResp); nStaleTries++) {
+    for (nStaleTries = 0; nStaleTries < MAX_STALE_RESPONSE_TRIES && !RecoverMatchingReply(pszCmd, pszResp); nStaleTries++) {
         LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Mismatched response for Cmd: %s -- got stale reply: '%s', discarding (attempt %d/%d)\n",
                  pszCmd, pszResp, nStaleTries + 1, MAX_STALE_RESPONSE_TRIES);
 
@@ -381,7 +409,7 @@ int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, u
         }
     }
 
-    if (!responseMatchesCommand(pszCmd, pszResp)) {
+    if (!RecoverMatchingReply(pszCmd, pszResp)) {
         LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Gave up after %d stale replies, still mismatched for Cmd: %s last reply: '%s'\n",
                  MAX_STALE_RESPONSE_TRIES, pszCmd, pszResp);
         return PLUGIN_BAD_CMD_RESPONSE;
