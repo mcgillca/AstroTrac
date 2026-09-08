@@ -187,10 +187,19 @@ void AstroTrac::LogDebug(int nLevel, const char *pszFormat, ...)
 
     va_list args;
 
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] ", timestamp);
+    // Millisecond precision (vs. asctime()'s whole-second resolution previously) so log timestamps
+    // can be used directly for timing analysis, not just the per-command "X seconds total" fields.
+    struct timespec tsNow;
+    struct tm tmNow;
+    char szTimestamp[32];
+    clock_gettime(CLOCK_REALTIME, &tsNow);
+#if defined(SB_WIN_BUILD)
+    localtime_s(&tmNow, &tsNow.tv_sec);
+#else
+    localtime_r(&tsNow.tv_sec, &tmNow);
+#endif
+    strftime(szTimestamp, sizeof(szTimestamp), "%a %b %e %H:%M:%S", &tmNow);
+    fprintf(Logfile, "[%s.%03ld %d] ", szTimestamp, tsNow.tv_nsec / 1000000, tmNow.tm_year + 1900);
 
     va_start(args, pszFormat);
     vfprintf(Logfile, pszFormat, args);
@@ -220,7 +229,11 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
     *pszResult = 0; // Clear pszResult
 
     for (itries = 0; itries < MAXSENDTRIES; itries++) {
-        nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen, itries > 0);
+        // Only the last try gets the long timeout - see MAX_TIMEOUT_FINAL_TRY in AstroTrac.h for
+        // why (a genuine failure still surfaces almost as fast as before; a stalled-but-alive link
+        // gets one patient attempt instead of several more resends).
+        unsigned int nTimeoutMs = (itries == MAXSENDTRIES - 1) ? MAX_TIMEOUT_FINAL_TRY : MAX_TIMEOUT;
+        nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen, itries > 0, nTimeoutMs);
         if (nErr == PLUGIN_OK) {
             clock_gettime(CLOCK_MONOTONIC, &cmdNow);
             double cmdElapsed = (cmdNow.tv_sec - cmdStart.tv_sec) + (cmdNow.tv_nsec - cmdStart.tv_nsec) * 1e-9;
@@ -251,7 +264,7 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
 
 }
 
-int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen, bool bIsRetry)
+int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen, bool bIsRetry, unsigned int nTimeoutMs)
 {
     int nErr = PLUGIN_OK;
     unsigned char szResp[SERIAL_BUFFER_SIZE];
@@ -271,14 +284,14 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
         return nErr;
 
     // Read the framed "<...>" response for this command.
-    nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE);
+    nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE, nTimeoutMs);
     if (nErr) {
         LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d reading response : %s\n", nErr, szResp);
         return nErr;
     }
 
     // Discard any stale reply left over from an earlier, different command before trusting this one.
-    nErr = DiscardStaleReplies(pszCmd, szResp, SERIAL_BUFFER_SIZE);
+    nErr = DiscardStaleReplies(pszCmd, szResp, SERIAL_BUFFER_SIZE, nTimeoutMs);
     if (nErr)
         return nErr;
 
@@ -392,7 +405,7 @@ bool AstroTrac::RecoverMatchingReply(const char *pszCmd, unsigned char *pszResp)
 // Keep reading until pszResp matches pszCmd (see RecoverMatchingReply / responseMatchesCommand),
 // or give up after MAX_STALE_RESPONSE_TRIES - handles a stray reply left over from an earlier,
 // different command still being in the pipe when we start reading this one's response.
-int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen)
+int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen, unsigned int nTimeoutMs)
 {
     int nStaleTries;
     int nErr = PLUGIN_OK;
@@ -401,7 +414,7 @@ int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, u
         LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Mismatched response for Cmd: %s -- got stale reply: '%s', discarding (attempt %d/%d)\n",
                  pszCmd, pszResp, nStaleTries + 1, MAX_STALE_RESPONSE_TRIES);
 
-        nErr = AstroTracreadResponse(pszResp, nBufLen);
+        nErr = AstroTracreadResponse(pszResp, nBufLen, nTimeoutMs);
         if (nErr) {
             LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d re-reading response while discarding stale reply for Cmd: %s\n",
                      nErr, pszCmd);
@@ -509,7 +522,7 @@ bool AstroTrac::responseMatchesCommand(const char *pszCmd, const unsigned char *
 // or waitForBytesRx's own timeout, which earlier testing found doesn't reliably honor the value
 // requested. Ported from the read-loop approach in the old Development branch (deviceCommand /
 // readResponse there), minus its std::string signature - the existing char*-buffer API is kept.
-int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int nBufferLen)
+int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int nBufferLen, unsigned int nTimeoutMs)
 {
     int nErr = PLUGIN_OK;
     unsigned long ulBytesRead = 0;
@@ -529,12 +542,12 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
         int nErrPeek = m_pSerx->bytesWaitingRx(nBytesWaiting);
 
         if (nErrPeek || nBytesWaiting <= 0) {
-            if (nMsWaited >= (int)MAX_TIMEOUT) {
+            if (nMsWaited >= (int)nTimeoutMs) {
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                 clock_gettime(CLOCK_MONOTONIC, &rfEnd);
                 double rfElapsed = (rfEnd.tv_sec - rfStart.tv_sec) + (rfEnd.tv_nsec - rfStart.tv_nsec) * 1e-9;
                 LogDebug(1, "[AstroTrac::readResponse] TIMED OUT: no bytes waiting after %.3f seconds (of %dms requested timeout, had %lu byte(s) so far: '%s')\n",
-                         rfElapsed, MAX_TIMEOUT, ulTotalBytesRead, pszRespBuffer);
+                         rfElapsed, nTimeoutMs, ulTotalBytesRead, pszRespBuffer);
 #endif
                 return PLUGIN_BAD_CMD_RESPONSE;
             }
@@ -549,7 +562,7 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
         if (ulTotalBytesRead + ulToRead > nBufferLen)
             ulToRead = nBufferLen - ulTotalBytesRead;
 
-        nErr = m_pSerx->readFile(pszBufPtr, ulToRead, ulBytesRead, MAX_TIMEOUT);
+        nErr = m_pSerx->readFile(pszBufPtr, ulToRead, ulBytesRead, nTimeoutMs);
         if (nErr) {
             LogDebug(1, "[AstroTrac::readResponse] readFile error %d reading %lu waiting byte(s) (had %lu byte(s) so far: '%s')\n",
                      nErr, ulToRead, ulTotalBytesRead, pszRespBuffer);

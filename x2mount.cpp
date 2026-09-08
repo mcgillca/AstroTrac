@@ -141,10 +141,19 @@ void X2Mount::LogDebug(int nLevel, const char *pszFormat, ...) const
 
     va_list args;
 
-    time_t ltime = time(NULL);
-    char *timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(LogFile, "[%s] ", timestamp);
+    // Millisecond precision (vs. asctime()'s whole-second resolution previously) so log timestamps
+    // can be used directly for timing analysis, matching AstroTrac.cpp's own log.
+    struct timespec tsNow;
+    struct tm tmNow;
+    char szTimestamp[32];
+    clock_gettime(CLOCK_REALTIME, &tsNow);
+#if defined(SB_WIN_BUILD)
+    localtime_s(&tmNow, &tsNow.tv_sec);
+#else
+    localtime_r(&tsNow.tv_sec, &tmNow);
+#endif
+    strftime(szTimestamp, sizeof(szTimestamp), "%a %b %e %H:%M:%S", &tmNow);
+    fprintf(LogFile, "[%s.%03ld %d] ", szTimestamp, tsNow.tv_nsec / 1000000, tmNow.tm_year + 1900);
 
     va_start(args, pszFormat);
     vfprintf(LogFile, pszFormat, args);
