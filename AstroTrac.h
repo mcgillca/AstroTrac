@@ -45,7 +45,7 @@
 //      actively debugging the comms protocol itself.
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle.
 // #define PLUGIN_DEBUG 2
-#define DRIVER_VERSION 2.0
+#define DRIVER_VERSION 2.03
 
 // Changelog:
 // Version  1.0: Initial release
@@ -63,6 +63,17 @@
 //               instead of relying on readFile's unreliable per-byte timeout, and tuned the retry/timeout constants
 //               from measured hardware data. Added the firmware-level post-meridian/horizon safety backstop
 //               (see 1.7) as the headline new capability.
+//          2.01: Name the debug log after the observing night (noon-to-noon, matching TheSkyX's own guide-log
+//               folder naming) instead of a fixed AstroTracLog.txt, and append _v2/_v3/... if a log for that
+//               night already exists, so a second connection no longer silently overwrites the first.
+//          2.02: Recover a matching reply already sitting at the end of a stale reply backlog (delayed
+//               responses can arrive bunched together after a comms stall) instead of discarding the whole
+//               buffer and, once MAX_STALE_RESPONSE_TRIES is exhausted, forcing an unnecessary resend.
+//          2.03: Give only the LAST of MAXSENDTRIES a long (1.6s) timeout instead of raising every try -
+//               rides out the ~1.85s comms stalls seen in the field without slowing down genuine-failure
+//               detection or piling up extra resends (see MAX_TIMEOUT_FINAL_TRY). Also added millisecond
+//               precision to this log's own timestamps (and x2mount.cpp's), so log times can be used
+//               directly for timing analysis instead of only the per-command "X seconds total" fields.
 
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
@@ -74,6 +85,15 @@ enum AstroTracErrors {PLUGIN_OK=0, NOT_CONNECTED, PLUGIN_CANT_CONNECT, PLUGIN_BA
 
 #define SERIAL_BUFFER_SIZE 256
 #define MAX_TIMEOUT 300
+// Only the LAST of MAXSENDTRIES uses this - measured worst case on 2026-09-06 was a 1.847s gap
+// between a command's first send and the first actual byte arriving (a Pi-side scheduling stall,
+// not a genuine comms failure - see astrotrac_guide_pulse_timing_analysis memory), across 4
+// consecutive MAX_TIMEOUT windows. Keeping the first tries short means a GENUINE failure (mount
+// truly unreachable) still surfaces almost as fast as before; only the final try pays for enough
+// patience to ride out a stall like that without ever reporting failure to TheSkyX. Deliberately
+// NOT done by adding more tries instead - each try is a real resend (see PreparePortForSend), and
+// more resends just means more stale replies piling up for RecoverMatchingReply to sort out later.
+#define MAX_TIMEOUT_FINAL_TRY 1600
 #define PLUGIN_LOG_BUFFER_SIZE 256
 #define ERR_PARSE   1
 
@@ -190,15 +210,16 @@ private:
     double  m_dHoursWest;
     
     int     AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen);
-    int     AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen, bool bIsRetry);
-    int     AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int bufferLen);
+    int     AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen, bool bIsRetry, unsigned int nTimeoutMs);
+    int     AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int bufferLen, unsigned int nTimeoutMs = MAX_TIMEOUT);
     bool    responseMatchesCommand(const char *pszCmd, const unsigned char *pszResp);
 
     // Helpers used by AstroTracSendCommandInnerLoop, broken out for readability - see definitions
     // for what each covers.
     bool    PreparePortForSend(const char *pszCmd, bool bIsRetry);
     int     WriteCommand(const char *pszCmd);
-    int     DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen);
+    int     DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen, unsigned int nTimeoutMs);
+    bool    RecoverMatchingReply(const char *pszCmd, unsigned char *pszResp);
     void    DrainDuplicateReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen, bool bIsRetry);
     void    LogDebug(int nLevel, const char *pszFormat, ...);
 
@@ -223,9 +244,6 @@ private:
     
 #ifdef PLUGIN_DEBUG
     std::string m_sLogfilePath;
-	// timestamp for logs
-    char *timestamp;
-	time_t ltime;
 	FILE *Logfile;	  // LogFile
 #endif
 	

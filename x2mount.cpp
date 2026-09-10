@@ -21,17 +21,50 @@ X2Mount::X2Mount(const char* pszDriverSelection,
 	m_pTickCount					= pTickCount;
 	
 #ifdef AstroTrac_X2_DEBUG
+    std::string sLogDir;
+    std::string sPathSep;
 #if defined(SB_WIN_BUILD)
-    m_sLogfilePath = getenv("HOMEDRIVE");
-    m_sLogfilePath += getenv("HOMEPATH");
-    m_sLogfilePath += "\\AstroTrac_X2_Logfile.txt";
+    sLogDir = getenv("HOMEDRIVE");
+    sLogDir += getenv("HOMEPATH");
+    sPathSep = "\\";
 #elif defined(SB_LINUX_BUILD)
-    m_sLogfilePath = getenv("HOME");
-    m_sLogfilePath += "/AstroTrac_X2_Logfile.txt";
+    sLogDir = getenv("HOME");
+    sPathSep = "/";
 #elif defined(SB_MAC_BUILD)
-    m_sLogfilePath = getenv("HOME");
-    m_sLogfilePath += "/AstroTrac_X2_Logfile.txt";
+    sLogDir = getenv("HOME");
+    sPathSep = "/";
 #endif
+
+    // Name the log after the observing night, using the same "noon to noon"
+    // convention TheSkyX itself uses for its guide-log folders, and the same
+    // approach as AstroTrac.cpp's own log - see the comment there for why.
+    time_t nowTime = time(nullptr);
+    struct tm nightTm;
+#if defined(SB_WIN_BUILD)
+    localtime_s(&nightTm, &nowTime);
+#else
+    localtime_r(&nowTime, &nightTm);
+#endif
+    if (nightTm.tm_hour < 12) {
+        nowTime -= 12 * 3600;
+#if defined(SB_WIN_BUILD)
+        localtime_s(&nightTm, &nowTime);
+#else
+        localtime_r(&nowTime, &nightTm);
+#endif
+    }
+    char szNightDate[32];
+    strftime(szNightDate, sizeof(szNightDate), "%B %d %Y", &nightTm);
+
+    std::string sBaseName = std::string("AstroTrac_X2_Logfile_") + szNightDate;
+    m_sLogfilePath = sLogDir + sPathSep + sBaseName + ".txt";
+    int nVersion = 1;
+    while (FILE *pExisting = fopen(m_sLogfilePath.c_str(), "r")) {
+        fclose(pExisting);
+        nVersion++;
+        m_sLogfilePath = sLogDir + sPathSep + sBaseName + "_v" + std::to_string(nVersion) + ".txt";
+    }
+
 	LogFile = fopen(m_sLogfilePath.c_str(), "w");
 #endif
 	
@@ -108,10 +141,19 @@ void X2Mount::LogDebug(int nLevel, const char *pszFormat, ...) const
 
     va_list args;
 
-    time_t ltime = time(NULL);
-    char *timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(LogFile, "[%s] ", timestamp);
+    // Millisecond precision (vs. asctime()'s whole-second resolution previously) so log timestamps
+    // can be used directly for timing analysis, matching AstroTrac.cpp's own log.
+    struct timespec tsNow;
+    struct tm tmNow;
+    char szTimestamp[32];
+    clock_gettime(CLOCK_REALTIME, &tsNow);
+#if defined(SB_WIN_BUILD)
+    localtime_s(&tmNow, &tsNow.tv_sec);
+#else
+    localtime_r(&tsNow.tv_sec, &tmNow);
+#endif
+    strftime(szTimestamp, sizeof(szTimestamp), "%a %b %e %H:%M:%S", &tmNow);
+    fprintf(LogFile, "[%s.%03ld %d] ", szTimestamp, tsNow.tv_nsec / 1000000, tmNow.tm_year + 1900);
 
     va_start(args, pszFormat);
     vfprintf(LogFile, pszFormat, args);

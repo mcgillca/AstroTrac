@@ -9,17 +9,53 @@ AstroTrac::AstroTrac()
     m_bLimitCached = false;
     
 #ifdef PLUGIN_DEBUG
+    std::string sLogDir;
+    std::string sPathSep;
 #if defined(SB_WIN_BUILD)
-    m_sLogfilePath = getenv("HOMEDRIVE");
-    m_sLogfilePath += getenv("HOMEPATH");
-    m_sLogfilePath += "\\AstroTracLog.txt";
+    sLogDir = getenv("HOMEDRIVE");
+    sLogDir += getenv("HOMEPATH");
+    sPathSep = "\\";
 #elif defined(SB_LINUX_BUILD)
-    m_sLogfilePath = getenv("HOME");
-    m_sLogfilePath += "/AstroTracLog.txt";
+    sLogDir = getenv("HOME");
+    sPathSep = "/";
 #elif defined(SB_MAC_BUILD)
-    m_sLogfilePath = getenv("HOME");
-    m_sLogfilePath += "/AstroTracLog.txt";
+    sLogDir = getenv("HOME");
+    sPathSep = "/";
 #endif
+
+    // Name the log after the observing night, using the same "noon to noon"
+    // convention TheSkyX itself uses for its guide-log folders (e.g.
+    // "September 04 2026" covers the night from midday Sep 4 to midday
+    // Sep 5) - lets this log be matched to its corresponding guiding data by
+    // date at a glance, and stops a second connection on the same night from
+    // silently overwriting the first (see versioning below).
+    time_t nowTime = time(nullptr);
+    struct tm nightTm;
+#if defined(SB_WIN_BUILD)
+    localtime_s(&nightTm, &nowTime);
+#else
+    localtime_r(&nowTime, &nightTm);
+#endif
+    if (nightTm.tm_hour < 12) {
+        nowTime -= 12 * 3600;
+#if defined(SB_WIN_BUILD)
+        localtime_s(&nightTm, &nowTime);
+#else
+        localtime_r(&nowTime, &nightTm);
+#endif
+    }
+    char szNightDate[32];
+    strftime(szNightDate, sizeof(szNightDate), "%B %d %Y", &nightTm);
+
+    std::string sBaseName = std::string("AstroTracLog_") + szNightDate;
+    m_sLogfilePath = sLogDir + sPathSep + sBaseName + ".txt";
+    int nVersion = 1;
+    while (FILE *pExisting = fopen(m_sLogfilePath.c_str(), "r")) {
+        fclose(pExisting);
+        nVersion++;
+        m_sLogfilePath = sLogDir + sPathSep + sBaseName + "_v" + std::to_string(nVersion) + ".txt";
+    }
+
 	Logfile = fopen(m_sLogfilePath.c_str(), "w");
 #endif
 
@@ -151,10 +187,19 @@ void AstroTrac::LogDebug(int nLevel, const char *pszFormat, ...)
 
     va_list args;
 
-    ltime = time(NULL);
-    timestamp = asctime(localtime(&ltime));
-    timestamp[strlen(timestamp) - 1] = 0;
-    fprintf(Logfile, "[%s] ", timestamp);
+    // Millisecond precision (vs. asctime()'s whole-second resolution previously) so log timestamps
+    // can be used directly for timing analysis, not just the per-command "X seconds total" fields.
+    struct timespec tsNow;
+    struct tm tmNow;
+    char szTimestamp[32];
+    clock_gettime(CLOCK_REALTIME, &tsNow);
+#if defined(SB_WIN_BUILD)
+    localtime_s(&tmNow, &tsNow.tv_sec);
+#else
+    localtime_r(&tsNow.tv_sec, &tmNow);
+#endif
+    strftime(szTimestamp, sizeof(szTimestamp), "%a %b %e %H:%M:%S", &tmNow);
+    fprintf(Logfile, "[%s.%03ld %d] ", szTimestamp, tsNow.tv_nsec / 1000000, tmNow.tm_year + 1900);
 
     va_start(args, pszFormat);
     vfprintf(Logfile, pszFormat, args);
@@ -184,7 +229,11 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
     *pszResult = 0; // Clear pszResult
 
     for (itries = 0; itries < MAXSENDTRIES; itries++) {
-        nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen, itries > 0);
+        // Only the last try gets the long timeout - see MAX_TIMEOUT_FINAL_TRY in AstroTrac.h for
+        // why (a genuine failure still surfaces almost as fast as before; a stalled-but-alive link
+        // gets one patient attempt instead of several more resends).
+        unsigned int nTimeoutMs = (itries == MAXSENDTRIES - 1) ? MAX_TIMEOUT_FINAL_TRY : MAX_TIMEOUT;
+        nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen, itries > 0, nTimeoutMs);
         if (nErr == PLUGIN_OK) {
             clock_gettime(CLOCK_MONOTONIC, &cmdNow);
             double cmdElapsed = (cmdNow.tv_sec - cmdStart.tv_sec) + (cmdNow.tv_nsec - cmdStart.tv_nsec) * 1e-9;
@@ -215,7 +264,7 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
 
 }
 
-int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen, bool bIsRetry)
+int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult, unsigned int nResultMaxLen, bool bIsRetry, unsigned int nTimeoutMs)
 {
     int nErr = PLUGIN_OK;
     unsigned char szResp[SERIAL_BUFFER_SIZE];
@@ -235,14 +284,14 @@ int AstroTrac::AstroTracSendCommandInnerLoop(const char *pszCmd, char *pszResult
         return nErr;
 
     // Read the framed "<...>" response for this command.
-    nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE);
+    nErr = AstroTracreadResponse(szResp, SERIAL_BUFFER_SIZE, nTimeoutMs);
     if (nErr) {
         LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d reading response : %s\n", nErr, szResp);
         return nErr;
     }
 
     // Discard any stale reply left over from an earlier, different command before trusting this one.
-    nErr = DiscardStaleReplies(pszCmd, szResp, SERIAL_BUFFER_SIZE);
+    nErr = DiscardStaleReplies(pszCmd, szResp, SERIAL_BUFFER_SIZE, nTimeoutMs);
     if (nErr)
         return nErr;
 
@@ -325,19 +374,47 @@ int AstroTrac::WriteCommand(const char *pszCmd)
     return nErr;
 }
 
-// Keep reading until pszResp matches pszCmd (see responseMatchesCommand), or give up after
-// MAX_STALE_RESPONSE_TRIES - handles a stray reply left over from an earlier, different command
-// still being in the pipe when we start reading this one's response.
-int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen)
+// A delayed reply backlog (see AstroTracreadResponse) can land as several concatenated "<...>"
+// frames in one read, with the actual answer to the current command sitting behind one or more
+// stale frames from an earlier command. Every frame keeps its own '>' terminator except the very
+// last one in the whole buffer, which gets nulled out to close the string (see
+// AstroTracreadResponse) - so frames stay distinguishable by scanning for '<'. Returns true, and
+// shifts that frame to the front of pszResp if it wasn't already there, when the LAST frame
+// matches pszCmd - recovering an answer that's already arrived instead of discarding it.
+bool AstroTrac::RecoverMatchingReply(const char *pszCmd, unsigned char *pszResp)
+{
+    unsigned char *pszLastFrame = pszResp;
+
+    for (unsigned char *p = pszResp; *p; p++) {
+        if (*p == '<')
+            pszLastFrame = p;
+    }
+
+    if (!responseMatchesCommand(pszCmd, pszLastFrame))
+        return false;
+
+    if (pszLastFrame != pszResp) {
+        memmove(pszResp, pszLastFrame, strlen((const char *)pszLastFrame) + 1);
+        LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Recovered matching reply for Cmd: %s from end of stale backlog: '%s'\n",
+                 pszCmd, pszResp);
+    }
+
+    return true;
+}
+
+// Keep reading until pszResp matches pszCmd (see RecoverMatchingReply / responseMatchesCommand),
+// or give up after MAX_STALE_RESPONSE_TRIES - handles a stray reply left over from an earlier,
+// different command still being in the pipe when we start reading this one's response.
+int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, unsigned int nBufLen, unsigned int nTimeoutMs)
 {
     int nStaleTries;
     int nErr = PLUGIN_OK;
 
-    for (nStaleTries = 0; nStaleTries < MAX_STALE_RESPONSE_TRIES && !responseMatchesCommand(pszCmd, pszResp); nStaleTries++) {
+    for (nStaleTries = 0; nStaleTries < MAX_STALE_RESPONSE_TRIES && !RecoverMatchingReply(pszCmd, pszResp); nStaleTries++) {
         LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Mismatched response for Cmd: %s -- got stale reply: '%s', discarding (attempt %d/%d)\n",
                  pszCmd, pszResp, nStaleTries + 1, MAX_STALE_RESPONSE_TRIES);
 
-        nErr = AstroTracreadResponse(pszResp, nBufLen);
+        nErr = AstroTracreadResponse(pszResp, nBufLen, nTimeoutMs);
         if (nErr) {
             LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] error %d re-reading response while discarding stale reply for Cmd: %s\n",
                      nErr, pszCmd);
@@ -345,7 +422,7 @@ int AstroTrac::DiscardStaleReplies(const char *pszCmd, unsigned char *pszResp, u
         }
     }
 
-    if (!responseMatchesCommand(pszCmd, pszResp)) {
+    if (!RecoverMatchingReply(pszCmd, pszResp)) {
         LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Gave up after %d stale replies, still mismatched for Cmd: %s last reply: '%s'\n",
                  MAX_STALE_RESPONSE_TRIES, pszCmd, pszResp);
         return PLUGIN_BAD_CMD_RESPONSE;
@@ -445,7 +522,7 @@ bool AstroTrac::responseMatchesCommand(const char *pszCmd, const unsigned char *
 // or waitForBytesRx's own timeout, which earlier testing found doesn't reliably honor the value
 // requested. Ported from the read-loop approach in the old Development branch (deviceCommand /
 // readResponse there), minus its std::string signature - the existing char*-buffer API is kept.
-int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int nBufferLen)
+int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int nBufferLen, unsigned int nTimeoutMs)
 {
     int nErr = PLUGIN_OK;
     unsigned long ulBytesRead = 0;
@@ -465,12 +542,12 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
         int nErrPeek = m_pSerx->bytesWaitingRx(nBytesWaiting);
 
         if (nErrPeek || nBytesWaiting <= 0) {
-            if (nMsWaited >= (int)MAX_TIMEOUT) {
+            if (nMsWaited >= (int)nTimeoutMs) {
 #if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
                 clock_gettime(CLOCK_MONOTONIC, &rfEnd);
                 double rfElapsed = (rfEnd.tv_sec - rfStart.tv_sec) + (rfEnd.tv_nsec - rfStart.tv_nsec) * 1e-9;
                 LogDebug(1, "[AstroTrac::readResponse] TIMED OUT: no bytes waiting after %.3f seconds (of %dms requested timeout, had %lu byte(s) so far: '%s')\n",
-                         rfElapsed, MAX_TIMEOUT, ulTotalBytesRead, pszRespBuffer);
+                         rfElapsed, nTimeoutMs, ulTotalBytesRead, pszRespBuffer);
 #endif
                 return PLUGIN_BAD_CMD_RESPONSE;
             }
@@ -485,7 +562,7 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
         if (ulTotalBytesRead + ulToRead > nBufferLen)
             ulToRead = nBufferLen - ulTotalBytesRead;
 
-        nErr = m_pSerx->readFile(pszBufPtr, ulToRead, ulBytesRead, MAX_TIMEOUT);
+        nErr = m_pSerx->readFile(pszBufPtr, ulToRead, ulBytesRead, nTimeoutMs);
         if (nErr) {
             LogDebug(1, "[AstroTrac::readResponse] readFile error %d reading %lu waiting byte(s) (had %lu byte(s) so far: '%s')\n",
                      nErr, ulToRead, ulTotalBytesRead, pszRespBuffer);
