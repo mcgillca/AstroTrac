@@ -15,6 +15,38 @@ An X2 plugin for controlling an AstroTrac360 mount from TheSky.
   (2.35 and later) as a backstop, so tracking still stops safely even if TheSky 
   hangs or the connection to the mount is lost. See **Driver settings** below.
 
+## Periodic comms stalls: root cause found and fixed (firmware 2.40+)
+
+If you've experienced periodic communication stalls with the mount - usually
+seen as an occasional **"command failed"** error from the driver, or, if
+you're using PulseGuide for autoguiding, TheSky reporting **"Autoguider
+stopped unexpectedly"** - the root cause has been identified: the mount's RA
+and DEC drives each run their own on-board Wi-Fi access point, and by default
+both used to sit on channel 1, which is also the busiest/most commonly used
+channel for nearby routers and other Wi-Fi devices. From firmware 2.40
+onward, RA (the drive your device actually connects to) has been moved to
+channel 6, with DEC on channel 1. This has been validated clean over many
+hours of imaging under a deliberately aggressive stress test
+(fastest-possible tracking, focuser, and guiding polling all running
+simultaneously at once) with zero comms stalls.
+
+**Updating to firmware 2.40 or later should resolve most periodic stall
+issues.** That said, channel 6 isn't guaranteed to be clear in every
+environment - if something else nearby (another router, a neighbour's
+network) happens to be busy on or near channel 6 at your specific location,
+you could still see occasional issues. If that happens, the two workarounds
+below remain useful as additional mitigation - they reduce the impact of any
+residual retransmissions rather than addressing the root cause, but combined
+with the firmware fix they should cover almost any situation.
+
+**A note on firmware versions:** the driver-side reliability work (mutex
+fixes, retry/timeout tuning, stale-reply recovery) works with the currently
+released firmware (2.25) and needs no firmware update at all. The
+firmware-level safety backstop described in **Driver settings** below needs
+firmware 2.35+, and the Wi-Fi channel fix described here needs firmware
+2.40 - both of these are still being evaluated by AstroTrac ahead of release
+and aren't yet publicly available.
+
 ## Connecting to the mount
 
 TheSky's serial-device dialog is used to point the driver at the mount, even
@@ -56,6 +88,10 @@ Reached via **More Settings...** in the Serial Device Settings dialog above:
   calibration.
 
 ## Recommended: reduce retransmission timeout on a Raspberry Pi
+
+If you're still seeing occasional comms issues after updating to firmware
+2.40+ (see above), this and the next recommendation help reduce their impact
+further.
 
 When tested on a Raspberry Pi 5, more than 99.9% of commands to the mount were 
 transmitted in less than 10ms. However, if there was a problem and a data packet
@@ -110,3 +146,26 @@ the cross hair update interval and reducing the retransmission time as suggested
 above will reduce the maximum time to send a command to 50ms. At 0.1 siderial
 this will result in maximum pulseguide error of less than 0.1" which is 
 insignificant.
+
+## Changelog (v2.0 to now)
+
+- **2.0**: Audited and fixed mutex coverage around every call into the mount
+  communication layer, including a reentrant-locking deadlock risk. Rewrote
+  the read path to poll for waiting bytes and batch-read instead of relying
+  on an unreliable per-byte timeout, and tuned the retry/timeout constants
+  from measured hardware data. Added the firmware-level post-meridian/horizon
+  safety backstop (firmware 2.35+) as the headline new capability.
+- **2.01**: Name the debug log after the observing night (noon-to-noon,
+  matching TheSky's own guide-log folder naming) instead of a fixed
+  filename, appending `_v2`/`_v3`/... if a log for that night already
+  exists, so a second connection no longer silently overwrites the first.
+- **2.02**: Recover a matching reply already sitting at the end of a stale
+  reply backlog (delayed responses can arrive bunched together after a
+  comms stall) instead of discarding the whole buffer and forcing an
+  unnecessary resend once retries are exhausted.
+- **2.03**: Give only the last retry a long (1.6s) timeout instead of
+  raising every attempt - rides out the multi-second comms stalls seen in
+  the field without slowing down genuine-failure detection or piling up
+  extra resends. Also added millisecond precision to the debug log's
+  timestamps, so log times can be used directly for timing analysis.
+
