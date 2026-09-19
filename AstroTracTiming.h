@@ -43,12 +43,17 @@ inline void AtTimestampNow(char *pszBuf, size_t nLen)
     using namespace std::chrono;
     system_clock::time_point tp = system_clock::now();
     time_t secs = system_clock::to_time_t(tp);
-    long ms = (long)(duration_cast<milliseconds>(tp.time_since_epoch()).count() % 1000);
+    int ms = (int)(duration_cast<milliseconds>(tp.time_since_epoch()).count() % 1000);
+    if (ms < 0) ms = 0;    // only possible for pre-1970 times
     struct tm tmNow;
     AtLocalTime(secs, tmNow);
     char szBase[32];
     strftime(szBase, sizeof(szBase), "%a %b %e %H:%M:%S", &tmNow);
-    snprintf(pszBuf, nLen, "%s.%03ld %d", szBase, ms, tmNow.tm_year + 1900);
+    int year = tmNow.tm_year + 1900;
+    if (year < 0 || year > 9999) year = 0;
+    // ms and year are clamped so the output is provably at most 31+1+3+1+4 = 40 chars, which lets the
+    // compiler see it fits (gcc otherwise warns about possible truncation, assuming a huge int).
+    snprintf(pszBuf, nLen, "%s.%03d %04d", szBase, ms, year);
 }
 
 // Observing-night date used to name the debug logs, e.g. "September 04 2026". Uses the same
