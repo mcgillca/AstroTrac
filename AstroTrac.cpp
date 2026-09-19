@@ -23,29 +23,10 @@ AstroTrac::AstroTrac()
     sPathSep = "/";
 #endif
 
-    // Name the log after the observing night, using the same "noon to noon"
-    // convention TheSkyX itself uses for its guide-log folders (e.g.
-    // "September 04 2026" covers the night from midday Sep 4 to midday
-    // Sep 5) - lets this log be matched to its corresponding guiding data by
-    // date at a glance, and stops a second connection on the same night from
-    // silently overwriting the first (see versioning below).
-    time_t nowTime = time(nullptr);
-    struct tm nightTm;
-#if defined(SB_WIN_BUILD)
-    localtime_s(&nightTm, &nowTime);
-#else
-    localtime_r(&nowTime, &nightTm);
-#endif
-    if (nightTm.tm_hour < 12) {
-        nowTime -= 12 * 3600;
-#if defined(SB_WIN_BUILD)
-        localtime_s(&nightTm, &nowTime);
-#else
-        localtime_r(&nowTime, &nightTm);
-#endif
-    }
+    // Name the log after the observing night (noon to noon - see AtObservingNightDate), and stop a
+    // second connection on the same night from silently overwriting the first (see versioning below).
     char szNightDate[32];
-    strftime(szNightDate, sizeof(szNightDate), "%B %d %Y", &nightTm);
+    AtObservingNightDate(szNightDate, sizeof(szNightDate));
 
     std::string sBaseName = std::string("AstroTracLog_") + szNightDate;
     m_sLogfilePath = sLogDir + sPathSep + sBaseName + ".txt";
@@ -187,19 +168,11 @@ void AstroTrac::LogDebug(int nLevel, const char *pszFormat, ...)
 
     va_list args;
 
-    // Millisecond precision (vs. asctime()'s whole-second resolution previously) so log timestamps
-    // can be used directly for timing analysis, not just the per-command "X seconds total" fields.
-    struct timespec tsNow;
-    struct tm tmNow;
-    char szTimestamp[32];
-    clock_gettime(CLOCK_REALTIME, &tsNow);
-#if defined(SB_WIN_BUILD)
-    localtime_s(&tmNow, &tsNow.tv_sec);
-#else
-    localtime_r(&tsNow.tv_sec, &tmNow);
-#endif
-    strftime(szTimestamp, sizeof(szTimestamp), "%a %b %e %H:%M:%S", &tmNow);
-    fprintf(Logfile, "[%s.%03ld %d] ", szTimestamp, tsNow.tv_nsec / 1000000, tmNow.tm_year + 1900);
+    // Millisecond precision so log timestamps can be used directly for timing analysis, not just
+    // the per-command "X seconds total" fields.
+    char szTimestamp[48];
+    AtTimestampNow(szTimestamp, sizeof(szTimestamp));
+    fprintf(Logfile, "[%s] ", szTimestamp);
 
     va_start(args, pszFormat);
     vfprintf(Logfile, pszFormat, args);
@@ -223,8 +196,9 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
 {
     int itries;
     int nErr = PLUGIN_OK;
-    struct timespec cmdStart, cmdNow;
-    clock_gettime(CLOCK_MONOTONIC, &cmdStart);
+#ifdef PLUGIN_DEBUG
+    AtTime cmdStart = AtNow();
+#endif
 
     *pszResult = 0; // Clear pszResult
 
@@ -235,8 +209,8 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
         unsigned int nTimeoutMs = (itries == MAXSENDTRIES - 1) ? MAX_TIMEOUT_FINAL_TRY : MAX_TIMEOUT;
         nErr = AstroTracSendCommandInnerLoop(pszCmd, pszResult, nResultMaxLen, itries > 0, nTimeoutMs);
         if (nErr == PLUGIN_OK) {
-            clock_gettime(CLOCK_MONOTONIC, &cmdNow);
-            double cmdElapsed = (cmdNow.tv_sec - cmdStart.tv_sec) + (cmdNow.tv_nsec - cmdStart.tv_nsec) * 1e-9;
+#ifdef PLUGIN_DEBUG
+            double cmdElapsed = AtSecondsSince(cmdStart);
             if (itries > 0)
                 // Notable - this is the total time from the first send attempt to a working
                 // reply, which is what a longer read timeout would need to beat.
@@ -247,18 +221,17 @@ int AstroTrac::AstroTracSendCommand(const char *pszCmd, char *pszResult, unsigne
                 // build a distribution of normal round-trip timing, so kept off level 1.
                 LogDebug(2, "AstroTrac::AstroTracSendCommand Cmd: %s succeeded first try, %.3f seconds total\n",
                          pszCmd, cmdElapsed);
+#endif
             return nErr;
         }
 
         LogDebug(2, "AstroTrac::AstroTracSendCommand itries %d Cmd: %s Result: %s \n", itries, pszCmd, pszResult);
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &cmdNow);
-    {
-        double cmdElapsed = (cmdNow.tv_sec - cmdStart.tv_sec) + (cmdNow.tv_nsec - cmdStart.tv_nsec) * 1e-9;
-        LogDebug(1, "AstroTrac::AstroTracSendCommand Cmd: %s FAILED after %d tries, %.3f seconds total\n",
-                 pszCmd, itries, cmdElapsed);
-    }
+#ifdef PLUGIN_DEBUG
+    LogDebug(1, "AstroTrac::AstroTracSendCommand Cmd: %s FAILED after %d tries, %.3f seconds total\n",
+             pszCmd, itries, AtSecondsSince(cmdStart));
+#endif
 
     return nErr;
 
@@ -350,9 +323,8 @@ int AstroTrac::WriteCommand(const char *pszCmd)
 {
     int nErr;
     unsigned long ulBytesWrite;
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    struct timespec wcStart, wcEnd;
-    clock_gettime(CLOCK_MONOTONIC, &wcStart);
+#ifdef PLUGIN_DEBUG
+    AtTime wcStart = AtNow();
 #endif
 
     LogDebug(2, "[AstroTrac::AstroTracSendCommandInnerLoop] Sending %s\n", pszCmd);
@@ -360,12 +332,8 @@ int AstroTrac::WriteCommand(const char *pszCmd)
     nErr = m_pSerx->writeFile((void *)pszCmd, strlen(pszCmd), ulBytesWrite);
     m_pSerx->flushTx();
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    {
-        clock_gettime(CLOCK_MONOTONIC, &wcEnd);
-        double wcElapsed = (wcEnd.tv_sec - wcStart.tv_sec) + (wcEnd.tv_nsec - wcStart.tv_nsec) * 1e-9;
-        LogDebug(2, "[AstroTrac::WriteCommand] writeFile+flushTx for Cmd: %s took %.3f seconds\n", pszCmd, wcElapsed);
-    }
+#ifdef PLUGIN_DEBUG
+    LogDebug(2, "[AstroTrac::WriteCommand] writeFile+flushTx for Cmd: %s took %.3f seconds\n", pszCmd, AtSecondsSince(wcStart));
 #endif
 
     if (nErr)
@@ -529,9 +497,8 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
     unsigned long ulTotalBytesRead = 0;
     unsigned char *pszBufPtr;
     int nMsWaited = 0;
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    struct timespec rfStart, rfEnd;
-    clock_gettime(CLOCK_MONOTONIC, &rfStart);
+#ifdef PLUGIN_DEBUG
+    AtTime rfStart = AtNow();
 #endif
 
     memset(pszRespBuffer, 0, (size_t) nBufferLen);
@@ -543,11 +510,9 @@ int AstroTrac::AstroTracreadResponse(unsigned char *pszRespBuffer, unsigned int 
 
         if (nErrPeek || nBytesWaiting <= 0) {
             if (nMsWaited >= (int)nTimeoutMs) {
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-                clock_gettime(CLOCK_MONOTONIC, &rfEnd);
-                double rfElapsed = (rfEnd.tv_sec - rfStart.tv_sec) + (rfEnd.tv_nsec - rfStart.tv_nsec) * 1e-9;
+#ifdef PLUGIN_DEBUG
                 LogDebug(1, "[AstroTrac::readResponse] TIMED OUT: no bytes waiting after %.3f seconds (of %dms requested timeout, had %lu byte(s) so far: '%s')\n",
-                         rfElapsed, nTimeoutMs, ulTotalBytesRead, pszRespBuffer);
+                         AtSecondsSince(rfStart), nTimeoutMs, ulTotalBytesRead, pszRespBuffer);
 #endif
                 return PLUGIN_BAD_CMD_RESPONSE;
             }
@@ -1058,25 +1023,22 @@ int AstroTrac::startOpenLoopMove(const MountDriverInterface::MoveDir Dir, unsign
             break;
     }
     
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    struct timespec cmdStart, cmdEnd;
-    clock_gettime(CLOCK_MONOTONIC, &cmdStart);
+#ifdef PLUGIN_DEBUG
+    AtTime cmdStart = AtNow();
 #endif
     nErr = AstroTracSendCommand(szCmd, szResp, SERIAL_BUFFER_SIZE);
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    clock_gettime(CLOCK_MONOTONIC, &cmdEnd);
-    double cmdElapsed = (cmdEnd.tv_sec - cmdStart.tv_sec) + (cmdEnd.tv_nsec - cmdStart.tv_nsec) * 1e-9;
-    LogDebug(0, "[AstroTrac::startOpenLoopMove] AstroTracSendCommand took %.3f seconds, nErr = %d\n", cmdElapsed, nErr);
-#endif
+#ifdef PLUGIN_DEBUG
+    LogDebug(0, "[AstroTrac::startOpenLoopMove] AstroTracSendCommand took %.3f seconds, nErr = %d\n", AtSecondsSince(cmdStart), nErr);
 
     // Start timer to measure open loop slew duration for the appropriate axis
     if (Dir == MountDriverInterface::MD_NORTH || Dir == MountDriverInterface::MD_SOUTH) {
         m_bOpenLoopDEC = true;
-        clock_gettime(CLOCK_MONOTONIC, &m_OpenLoopStartTimeDEC);
+        m_OpenLoopStartTimeDEC = AtNow();
     } else {
         m_bOpenLoopRA = true;
-        clock_gettime(CLOCK_MONOTONIC, &m_OpenLoopStartTimeRA);
+        m_OpenLoopStartTimeRA = AtNow();
     }
+#endif
     
     return nErr;
 }
@@ -1085,32 +1047,21 @@ int AstroTrac::stopOpenLoopMove()
 {
     int nErr = PLUGIN_OK;
 
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    {
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        if (m_bOpenLoopRA) {
-            double elapsedRA = (now.tv_sec - m_OpenLoopStartTimeRA.tv_sec) + (now.tv_nsec - m_OpenLoopStartTimeRA.tv_nsec) * 1e-9;
-            LogDebug(0, "[AstroTrac::stopOpenLoopMove] RA (East/West) duration %.3f seconds\n", elapsedRA);
-        }
-        if (m_bOpenLoopDEC) {
-            double elapsedDEC = (now.tv_sec - m_OpenLoopStartTimeDEC.tv_sec) + (now.tv_nsec - m_OpenLoopStartTimeDEC.tv_nsec) * 1e-9;
-            LogDebug(0, "[AstroTrac::stopOpenLoopMove] DEC (North/South) duration %.3f seconds\n", elapsedDEC);
-        }
-    }
-#endif
+#ifdef PLUGIN_DEBUG
+    if (m_bOpenLoopRA)
+        LogDebug(0, "[AstroTrac::stopOpenLoopMove] RA (East/West) duration %.3f seconds\n", AtSecondsSince(m_OpenLoopStartTimeRA));
+    if (m_bOpenLoopDEC)
+        LogDebug(0, "[AstroTrac::stopOpenLoopMove] DEC (North/South) duration %.3f seconds\n", AtSecondsSince(m_OpenLoopStartTimeDEC));
     m_bOpenLoopRA = false;
     m_bOpenLoopDEC = false;
+#endif
     // Set tracking on to end slew
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    struct timespec cmdStart, cmdEnd;
-    clock_gettime(CLOCK_MONOTONIC, &cmdStart);
+#ifdef PLUGIN_DEBUG
+    AtTime cmdStart = AtNow();
 #endif
     nErr = setTrackingRates(true, true, 0.0, 0.0);
-#if defined PLUGIN_DEBUG && PLUGIN_DEBUG >= 0
-    clock_gettime(CLOCK_MONOTONIC, &cmdEnd);
-    double cmdElapsed = (cmdEnd.tv_sec - cmdStart.tv_sec) + (cmdEnd.tv_nsec - cmdStart.tv_nsec) * 1e-9;
-    LogDebug(0, "[AstroTrac::stopOpenLoopMove] setTrackingRates took %.3f seconds, nErr = %d\n", cmdElapsed, nErr);
+#ifdef PLUGIN_DEBUG
+    LogDebug(0, "[AstroTrac::stopOpenLoopMove] setTrackingRates took %.3f seconds, nErr = %d\n", AtSecondsSince(cmdStart), nErr);
 #endif
 
     return nErr;
