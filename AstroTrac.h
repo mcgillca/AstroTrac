@@ -26,7 +26,7 @@
 #include "../../licensedinterfaces/mountdriverinterface.h"
 #include "../../licensedinterfaces/mount/asymmetricalequatorialinterface.h"
 
-// #include "StopWatch.h"
+#include "AstroTracTiming.h"
 
 
 // Comment out PLUGIN_DEBUG entirely for a production build - Logfile/LogDebug then compile away to
@@ -45,7 +45,7 @@
 //      actively debugging the comms protocol itself.
 //   3: Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle.
 // #define PLUGIN_DEBUG 2
-#define DRIVER_VERSION 2.03
+#define DRIVER_VERSION 2.04
 
 // Changelog:
 // Version  1.0: Initial release
@@ -74,6 +74,11 @@
 //               detection or piling up extra resends (see MAX_TIMEOUT_FINAL_TRY). Also added millisecond
 //               precision to this log's own timestamps (and x2mount.cpp's), so log times can be used
 //               directly for timing analysis instead of only the per-command "X seconds total" fields.
+//          2.04: Made the timing code cross-platform. It used clock_gettime(), which MSVC doesn't provide, so the
+//               Windows build could not compile even with debug logging off. All timing now goes through
+//               small std::chrono helpers in AstroTracTiming.h, and every use is inside the debug guard
+//               (nothing in the driver's real logic depends on a clock - only the SDK sleeper is used).
+//               Log output format is unchanged.
 
 
 #define AT_SIDEREAL_SPEED 15.04106864 // Arc sec/s required to maintain siderial tracking
@@ -236,13 +241,14 @@ private:
     
     int const m_iNumberGuideRates = 4;
     
-    struct timespec  m_OpenLoopStartTimeRA;
-    struct timespec  m_OpenLoopStartTimeDEC;
+
+#ifdef PLUGIN_DEBUG
+    // Open-loop move duration logging only - nothing else reads these.
+    AtTime  m_OpenLoopStartTimeRA;
+    AtTime  m_OpenLoopStartTimeDEC;
     bool    m_bOpenLoopRA = false;
     bool    m_bOpenLoopDEC = false;
 
-    
-#ifdef PLUGIN_DEBUG
     std::string m_sLogfilePath;
 	FILE *Logfile;	  // LogFile
 #endif

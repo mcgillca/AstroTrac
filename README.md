@@ -168,4 +168,8 @@ insignificant.
   the field without slowing down genuine-failure detection or piling up
   extra resends. Also added millisecond precision to the debug log's
   timestamps, so log times can be used directly for timing analysis.
+- **2.04**: Made the driver's timing code cross-platform. It used a POSIX
+  call that isn't available with the Windows compiler, so the Windows build
+  couldn't compile. It now uses portable C++ and only runs when debug logging
+  is enabled. Log format is unchanged.
 

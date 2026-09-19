@@ -24,7 +24,7 @@
     <ClInclude Include="..\x2mount.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\StopWatch.h">
+    <ClInclude Include="..\AstroTracTiming.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
