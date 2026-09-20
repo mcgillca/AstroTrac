@@ -147,6 +147,49 @@ above will reduce the maximum time to send a command to 50ms. At 0.1 siderial
 this will result in maximum pulseguide error of less than 0.1" which is 
 insignificant.
 
+## Debug logging
+
+For normal use, leave debug logging off - this is the default, shipped with
+both macros commented out, so `LogDebug` compiles away to nothing and no log
+files are written. To diagnose a problem, uncomment one line in each of two
+headers and rebuild (changing the level also needs a rebuild):
+
+- `AstroTrac.h`: `#define PLUGIN_DEBUG <level>` - logs to
+  `AstroTracLog_<Month DD YYYY>.txt` in your home folder, named for the
+  current observing night (noon-to-noon, the same convention TheSky uses for
+  its guide-log folders, so a session that runs past midnight stays in one
+  file and can be matched to its guiding data by date). If a log for that
+  night already exists (e.g. a second connection later the same night), `_v2`,
+  `_v3`, etc. are appended rather than overwriting it. Covers the mount
+  communication layer: command send/receive timing, retries, timeouts, and
+  open-loop-move (guiding) durations.
+- `x2mount.h`: `#define AstroTrac_X2_DEBUG <level>` - logs to
+  `AstroTrac_X2_Logfile_<Month DD YYYY>.txt`, named and versioned the same
+  way. Covers the X2/TheSky-facing interface layer: connection lifecycle,
+  coordinate/tracking-limit checks, slews.
+
+Both use the same 0-3 level scale (lower number = shown at a lower verbosity
+setting; each level also includes everything below it):
+
+| Level | AstroTrac.h (`PLUGIN_DEBUG`) | x2mount.h (`AstroTrac_X2_DEBUG`) |
+|---|---|---|
+| 0 | Open-loop-move tracing (relevant to guiding) | *(unused - lives in AstroTrac.h)* |
+| 1 | Notable/unexpected events - commands that needed retries or failed, malformed or mismatched replies, read timeouts | Open-loop-move tracing, plus notable events - command failures and the safety stops (below horizon / past meridian) |
+| 2 | Full trace of the send-command machinery, including every command's round-trip time and how long the write took | *(unused - lives in AstroTrac.h)* |
+| 3 | Everything else - connection lifecycle, coordinate/math tracing, slew lifecycle | Everything else - connection lifecycle, coordinate/math tracing, slew and tracking lifecycle |
+
+A typical starting point for diagnosing a guiding or comms issue is level 1 in
+`AstroTrac.h` - it reports each command that needed a retry or failed, with
+the total time it took, without the volume of levels 2-3. Level 2 is only
+worth using when you specifically want a timing distribution of every
+command: with TheSky's cross hair update interval left at its default, a
+full night at level 2 produced around 30 million lines (roughly 3 GB), so
+consider the 500ms cross hair setting recommended above if you use it.
+
+Each line starts with a millisecond-precision timestamp, for example
+`[Wed Sep  9 20:03:39.724 2026]`, so log times can be used directly for
+timing analysis.
+
 ## Changelog (v2.0 to now)
 
 - **2.0**: Audited and fixed mutex coverage around every call into the mount
